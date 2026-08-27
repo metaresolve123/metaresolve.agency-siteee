@@ -4,7 +4,8 @@ import crypto from 'crypto';
 import dotenv from 'dotenv';
 import { createServer as createViteServer } from 'vite';
 
-dotenv.config();
+// Load .env file with override option so updated local .env takes precedence if present
+dotenv.config({ override: true });
 
 interface AdminSession {
   token: string;
@@ -13,37 +14,18 @@ interface AdminSession {
   expiresAt: number;
 }
 
-// In-memory runtime session store and password management
+// In-memory runtime session store
 const sessions = new Map<string, AdminSession>();
 
-// Default admin username as specified by the user or dynamically from environment variables
+// Read admin username dynamically from environment on every check (default 'metaresolve')
 const getAdminUsername = (): string => {
   return (process.env.ADMIN_USERNAME || 'metaresolve').trim();
 };
 
-// In-session password override if modified at runtime via admin settings
-let runtimeAdminPasswordOverride: string | null = null;
-
-// Dynamically retrieve valid administrative passwords, prioritizing Vercel environment variables
-const getExpectedPasswords = (): string[] => {
-  const passwords: string[] = [];
-
-  // 1. Production Vercel / Environment Variable (takes primary precedence)
-  if (process.env.ADMIN_PASSWORD && process.env.ADMIN_PASSWORD.trim()) {
-    passwords.push(process.env.ADMIN_PASSWORD.trim());
-  }
-
-  // 2. In-session runtime override if updated by admin
-  if (runtimeAdminPasswordOverride && runtimeAdminPasswordOverride.trim()) {
-    passwords.push(runtimeAdminPasswordOverride.trim());
-  }
-
-  // 3. Configured password fallback
-  if (!passwords.includes('adilxmetaxhuzzi')) {
-    passwords.push('adilxmetaxhuzzi');
-  }
-
-  return passwords;
+// Read admin password dynamically from environment variables on every check
+// No fallback or hard-coded default password - must strictly match process.env.ADMIN_PASSWORD
+const getAdminPassword = (): string => {
+  return (process.env.ADMIN_PASSWORD || '').trim();
 };
 
 // Timing safe comparison for passwords to prevent timing attacks
@@ -105,15 +87,21 @@ async function startServer() {
     }
 
     const expectedUsername = getAdminUsername();
-    const expectedPasswords = getExpectedPasswords();
+    const expectedPassword = getAdminPassword();
+
+    // If ADMIN_PASSWORD is missing or not set in environment, fail securely
+    if (!expectedPassword) {
+      return res.status(401).json({
+        success: false,
+        error: 'Invalid username or password.'
+      });
+    }
 
     const usernameMatch =
       String(username).trim().toLowerCase() === expectedUsername.toLowerCase();
 
     const providedPassword = String(password).trim();
-    const passwordMatch = expectedPasswords.some((expected) =>
-      safeCompare(providedPassword, expected)
-    );
+    const passwordMatch = safeCompare(providedPassword, expectedPassword);
 
     if (!usernameMatch || !passwordMatch) {
       // Intentional delay to mitigate brute-force attempts
@@ -200,25 +188,19 @@ async function startServer() {
       });
     }
 
-    const expectedPasswords = getExpectedPasswords();
+    const expectedPassword = getAdminPassword();
     const providedCurrent = String(currentPassword).trim();
-    const isCurrentValid = expectedPasswords.some((expected) =>
-      safeCompare(providedCurrent, expected)
-    );
 
-    if (!isCurrentValid) {
+    if (!expectedPassword || !safeCompare(providedCurrent, expectedPassword)) {
       return res.status(401).json({
         success: false,
         error: 'Current password does not match.'
       });
     }
 
-    // Update runtime password override
-    runtimeAdminPasswordOverride = String(newPassword).trim();
-
     return res.json({
       success: true,
-      message: 'Admin password updated successfully. To persist permanently across restarts and deployments, set the ADMIN_PASSWORD environment variable in your Vercel project settings.'
+      message: 'To change the admin password permanently, update the ADMIN_PASSWORD environment variable in your Vercel project settings.'
     });
   });
 
@@ -232,7 +214,7 @@ async function startServer() {
     res.json({
       success: true,
       username: getAdminUsername(),
-      hasEnvPasswordConfigured: Boolean(process.env.ADMIN_PASSWORD && process.env.ADMIN_PASSWORD.trim()),
+      hasEnvPasswordConfigured: Boolean(getAdminPassword()),
       activeSessionsCount: sessions.size
     });
   });
