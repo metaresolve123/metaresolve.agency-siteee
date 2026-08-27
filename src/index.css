@@ -1,0 +1,69 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --bg-primary: #090D0D;
+    --bg-secondary: #0D1313;
+    --bg-card: #141A19;
+    --bg-card-elevated: #18201E;
+    --lime-primary: #B7FF35;
+    --lime-bright: #C7FF45;
+    --lime-muted: #5A8F2D;
+    --text-primary: #F2F5EF;
+    --text-secondary: #A0AAA3;
+    --text-muted: #68736D;
+  }
+
+  body {
+    font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background-color: #090D0D;
+    color: #F2F5EF;
+  }
+
+  code, pre, .font-mono {
+    font-family: 'JetBrains Mono', monospace;
+  }
+}
+
+/* High Density Background Grid & Dot Matrix */
+.bg-dot-matrix {
+  background-image: radial-gradient(#B7FF35 1px, transparent 1px);
+  background-size: 40px 40px;
+}
+
+.bg-dot-matrix-dense {
+  background-image: radial-gradient(rgba(183, 255, 53, 0.4) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+/* Glow and ambient utilities */
+.glow-lime {
+  box-shadow: 0 0 20px rgba(183, 255, 53, 0.3);
+}
+
+.glow-lime-lg {
+  box-shadow: 0 0 40px -5px rgba(183, 255, 53, 0.35);
+}
+
+.glow-lime-subtle {
+  box-shadow: 0 0 60px -15px rgba(183, 255, 53, 0.12);
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #090D0D;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #1C2624;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #2D3D39;
+}
+

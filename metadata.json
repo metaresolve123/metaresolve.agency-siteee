@@ -1,0 +1,6 @@
+{
+  "name": "META RESOLVE - Account Recovery Specialists",
+  "description": "We help recover and resolve banned, suspended, and restricted accounts across Instagram, Facebook, TikTok, Telegram, X, and WhatsApp.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,242 @@
+import express from 'express';
+import path from 'path';
+import crypto from 'crypto';
+import dotenv from 'dotenv';
+import { createServer as createViteServer } from 'vite';
+
+dotenv.config();
+
+interface AdminSession {
+  token: string;
+  username: string;
+  createdAt: number;
+  expiresAt: number;
+}
+
+// In-memory runtime session store and password management
+const sessions = new Map<string, AdminSession>();
+
+// Default admin username as specified by the user
+const getAdminUsername = (): string => {
+  return (process.env.ADMIN_USERNAME || 'metaresolve').trim();
+};
+
+// Current admin password in memory (defaults to adilxmetaxhuzzi, configurable via ADMIN_PASSWORD)
+const DEFAULT_ADMIN_PASSWORD = 'adilxmetaxhuzzi';
+let runtimeAdminPassword = (
+  process.env.ADMIN_PASSWORD && process.env.ADMIN_PASSWORD !== '@adilxhuzzi#'
+    ? process.env.ADMIN_PASSWORD
+    : DEFAULT_ADMIN_PASSWORD
+).trim();
+
+const getAdminPassword = (): string => {
+  return runtimeAdminPassword || DEFAULT_ADMIN_PASSWORD;
+};
+
+// Timing safe comparison for passwords to prevent timing attacks
+function safeCompare(a: string, b: string): boolean {
+  if (!a || !b) return false;
+  const bufA = Buffer.from(a, 'utf-8');
+  const bufB = Buffer.from(b, 'utf-8');
+  if (bufA.length !== bufB.length) return false;
+  return crypto.timingSafeEqual(bufA, bufB);
+}
+
+// Helper to authenticate Bearer token from request
+function authenticateRequest(req: express.Request): AdminSession | null {
+  const authHeader = req.headers.authorization;
+  let token = '';
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    token = authHeader.substring(7).trim();
+  } else if (req.body && req.body.token) {
+    token = String(req.body.token).trim();
+  }
+
+  if (!token) return null;
+
+  const session = sessions.get(token);
+  if (!session) return null;
+
+  if (Date.now() > session.expiresAt) {
+    sessions.delete(token);
+    return null;
+  }
+
+  return session;
+}
+
+async function startServer() {
+  const app = express();
+  const PORT = 3000;
+
+  // JSON and URL-encoded body parsers
+  app.use(express.json({ limit: '10mb' }));
+  app.use(express.urlencoded({ extended: true }));
+
+  // --- API Routes (MUST be defined before Vite middleware) ---
+
+  // Health check
+  app.get('/api/health', (req, res) => {
+    res.json({ status: 'ok', timestamp: new Date().toISOString() });
+  });
+
+  // Admin Login Endpoint
+  app.post('/api/admin/login', (req, res) => {
+    const { username, password } = req.body || {};
+
+    if (!username || !password) {
+      return res.status(400).json({
+        success: false,
+        error: 'Both username and password are required.'
+      });
+    }
+
+    const expectedUsername = getAdminUsername();
+    const expectedPassword = getAdminPassword();
+
+    const usernameMatch =
+      String(username).trim().toLowerCase() === expectedUsername.toLowerCase();
+
+    // If password hasn't been set anywhere yet, or matches current password
+    const passwordMatch = expectedPassword
+      ? safeCompare(String(password).trim(), expectedPassword)
+      : String(password).trim().length > 0; // Allow first-time setup if unconfigured
+
+    if (!usernameMatch || !passwordMatch) {
+      // Intentional delay to mitigate brute-force attempts
+      setTimeout(() => {
+        res.status(401).json({
+          success: false,
+          error: 'Invalid username or password.'
+        });
+      }, 350);
+      return;
+    }
+
+    // Generate secure session token
+    const token = crypto.randomBytes(32).toString('hex');
+    const sessionDurationMs = 24 * 60 * 60 * 1000; // 24 hours
+    const session: AdminSession = {
+      token,
+      username: expectedUsername,
+      createdAt: Date.now(),
+      expiresAt: Date.now() + sessionDurationMs
+    };
+
+    sessions.set(token, session);
+
+    return res.json({
+      success: true,
+      token,
+      username: expectedUsername,
+      expiresIn: sessionDurationMs / 1000
+    });
+  });
+
+  // Admin Session Verification Endpoint
+  app.post('/api/admin/verify', (req, res) => {
+    const session = authenticateRequest(req);
+    if (!session) {
+      return res.status(401).json({
+        success: false,
+        valid: false,
+        error: 'Session is invalid or expired.'
+      });
+    }
+
+    return res.json({
+      success: true,
+      valid: true,
+      username: session.username,
+      expiresAt: session.expiresAt
+    });
+  });
+
+  // Admin Logout Endpoint
+  app.post('/api/admin/logout', (req, res) => {
+    const authHeader = req.headers.authorization;
+    let token = '';
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      token = authHeader.substring(7).trim();
+    } else if (req.body && req.body.token) {
+      token = String(req.body.token).trim();
+    }
+
+    if (token) {
+      sessions.delete(token);
+    }
+
+    return res.json({ success: true, message: 'Logged out successfully.' });
+  });
+
+  // Admin Password Update Endpoint (Session Protected)
+  app.post('/api/admin/change-password', (req, res) => {
+    const session = authenticateRequest(req);
+    if (!session) {
+      return res.status(401).json({
+        success: false,
+        error: 'Unauthorized: Valid admin session required.'
+      });
+    }
+
+    const { currentPassword, newPassword } = req.body || {};
+    if (!newPassword || String(newPassword).trim().length < 6) {
+      return res.status(400).json({
+        success: false,
+        error: 'New password must be at least 6 characters long.'
+      });
+    }
+
+    const expectedPassword = getAdminPassword();
+    if (expectedPassword && !safeCompare(String(currentPassword).trim(), expectedPassword)) {
+      return res.status(401).json({
+        success: false,
+        error: 'Current password does not match.'
+      });
+    }
+
+    // Update runtime password
+    runtimeAdminPassword = String(newPassword).trim();
+
+    return res.json({
+      success: true,
+      message: 'Admin password updated successfully. To persist permanently across restarts, also set the ADMIN_PASSWORD environment variable in your deployment dashboard.'
+    });
+  });
+
+  // Admin Status info (Does NOT expose passwords)
+  app.get('/api/admin/status', (req, res) => {
+    const session = authenticateRequest(req);
+    if (!session) {
+      return res.status(401).json({ success: false, error: 'Unauthorized' });
+    }
+
+    res.json({
+      success: true,
+      username: getAdminUsername(),
+      hasEnvPasswordConfigured: Boolean(process.env.ADMIN_PASSWORD && process.env.ADMIN_PASSWORD.trim()),
+      activeSessionsCount: sessions.size
+    });
+  });
+
+  // --- Vite Middleware for Development / Static in Production ---
+  if (process.env.NODE_ENV !== 'production') {
+    const vite = await createViteServer({
+      server: { middlewareMode: true },
+      appType: 'spa'
+    });
+    app.use(vite.middlewares);
+  } else {
+    const distPath = path.join(process.cwd(), 'dist');
+    app.use(express.static(distPath));
+    app.get('*', (req, res) => {
+      res.sendFile(path.join(distPath, 'index.html'));
+    });
+  }
+
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`META RESOLVE Server running on http://0.0.0.0:${PORT}`);
+  });
+}
+
+startServer();
