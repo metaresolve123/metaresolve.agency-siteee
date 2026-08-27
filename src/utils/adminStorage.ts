@@ -18,7 +18,7 @@ export const DEFAULT_SITE_CONFIG: SiteConfig = {
 const INITIAL_SAMPLE_LEADS: LeadRecord[] = [
   {
     id: 'META-982144',
-    createdAt: new Date(Date.now() - 1000 * 60 * 35).toISOString(), // 35 mins ago
+    createdAt: new Date(Date.now() - 1000 * 60 * 35).toISOString(),
     name: 'Sarah Jenkins',
     email: 'sarah@luxebeautylab.com',
     phone: '+1 415 890 2231',
@@ -33,7 +33,7 @@ const INITIAL_SAMPLE_LEADS: LeadRecord[] = [
   },
   {
     id: 'META-762910',
-    createdAt: new Date(Date.now() - 1000 * 60 * 180).toISOString(), // 3 hours ago
+    createdAt: new Date(Date.now() - 1000 * 60 * 180).toISOString(),
     name: 'David Chen',
     email: 'd.chen@apexmedia.co',
     phone: '+1 212 555 9081',
@@ -48,7 +48,7 @@ const INITIAL_SAMPLE_LEADS: LeadRecord[] = [
   },
   {
     id: 'META-412089',
-    createdAt: new Date(Date.now() - 1000 * 60 * 60 * 18).toISOString(), // 18 hours ago
+    createdAt: new Date(Date.now() - 1000 * 60 * 60 * 18).toISOString(),
     name: 'Tariq Al-Mansoor',
     email: 'tariq@gulflogistics.ae',
     phone: '+971 50 123 4567',
@@ -63,7 +63,7 @@ const INITIAL_SAMPLE_LEADS: LeadRecord[] = [
   },
   {
     id: 'META-309112',
-    createdAt: new Date(Date.now() - 1000 * 60 * 60 * 36).toISOString(), // 36 hours ago
+    createdAt: new Date(Date.now() - 1000 * 60 * 60 * 36).toISOString(),
     name: 'Marcus Vance',
     email: 'marcus@trendsphere.io',
     phone: '+44 20 7946 0912',
@@ -78,69 +78,224 @@ const INITIAL_SAMPLE_LEADS: LeadRecord[] = [
   }
 ];
 
-// --- Leads Management ---
+// --- In-memory local cache ---
+let inMemoryLeadsCache: LeadRecord[] | null = null;
+
+// Synchronously get leads from cache or local storage fallback
 export function getLeads(): LeadRecord[] {
+  if (inMemoryLeadsCache && inMemoryLeadsCache.length > 0) {
+    return inMemoryLeadsCache;
+  }
   try {
     const raw = localStorage.getItem(LEADS_STORAGE_KEY);
-    if (!raw) {
-      localStorage.setItem(LEADS_STORAGE_KEY, JSON.stringify(INITIAL_SAMPLE_LEADS));
-      return INITIAL_SAMPLE_LEADS;
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        inMemoryLeadsCache = parsed;
+        return parsed;
+      }
     }
-    return JSON.parse(raw);
   } catch (e) {
     console.error('Failed to load leads from localStorage', e);
-    return INITIAL_SAMPLE_LEADS;
   }
+  return INITIAL_SAMPLE_LEADS;
 }
 
-export function saveLead(formData: LeadFormData, caseId?: string): LeadRecord {
-  const leads = getLeads();
-  const newLead: LeadRecord = {
-    id: caseId || `META-${Math.floor(100000 + Math.random() * 900000)}`,
+// Asynchronously fetch latest leads from the server database (Admin authenticated)
+export async function fetchLeadsFromServer(): Promise<LeadRecord[]> {
+  const token = getStoredAdminToken();
+  if (!token) {
+    return getLeads();
+  }
+
+  try {
+    const res = await fetch('/api/admin/leads', {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`
+      }
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      if (data.success && Array.isArray(data.leads)) {
+        inMemoryLeadsCache = data.leads;
+        try {
+          localStorage.setItem(LEADS_STORAGE_KEY, JSON.stringify(data.leads));
+        } catch (e) {
+          // ignore
+        }
+        return data.leads;
+      }
+    }
+  } catch (err) {
+    console.warn('Network error while fetching leads from server, using local cache:', err);
+  }
+
+  return getLeads();
+}
+
+// Save lead from Contact Form to persistent server database
+export async function saveLead(
+  formData: LeadFormData,
+  caseId?: string
+): Promise<{ success: boolean; lead: LeadRecord }> {
+  const generatedId = caseId || `META-${Math.floor(100000 + Math.random() * 900000)}`;
+
+  const localLead: LeadRecord = {
+    id: generatedId,
     createdAt: new Date().toISOString(),
-    name: formData.name,
-    email: formData.email,
-    phone: formData.phone || '',
+    name: formData.name.trim(),
+    email: formData.email.trim(),
+    phone: formData.phone?.trim() || '',
     platform: formData.platform || 'other',
     accountType: formData.accountType || formData.service || 'Account Recovery',
     banReason: formData.banReason || 'Restricted / Suspended Account',
-    accountHandle: formData.accountHandle || '',
-    details: formData.details,
+    accountHandle: formData.accountHandle?.trim() || formData.name.trim(),
+    details: formData.details.trim(),
     urgency: formData.urgency || 'critical',
     status: 'new',
     adminNotes: formData.service ? `Requested Service: ${formData.service}` : '',
   };
 
-  const updated = [newLead, ...leads];
+  // Optimistically update local cache
+  const current = getLeads();
+  const updated = [localLead, ...current.filter(l => l.id !== localLead.id)];
+  inMemoryLeadsCache = updated;
   try {
     localStorage.setItem(LEADS_STORAGE_KEY, JSON.stringify(updated));
-    window.dispatchEvent(new CustomEvent('metaresolve_lead_added', { detail: newLead }));
+    window.dispatchEvent(new CustomEvent('metaresolve_lead_added', { detail: localLead }));
   } catch (e) {
-    console.error('Failed to save lead', e);
+    console.error('Failed to write local lead cache', e);
   }
 
-  return newLead;
+  // Send to backend server for permanent database storage
+  try {
+    const res = await fetch('/api/leads', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        fullName: formData.name,
+        name: formData.name,
+        email: formData.email,
+        phone: formData.phone,
+        service: formData.service,
+        platform: formData.platform,
+        accountType: formData.accountType,
+        banReason: formData.banReason,
+        accountHandle: formData.accountHandle,
+        details: formData.details,
+        urgency: formData.urgency,
+        caseId: generatedId
+      })
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      if (data.success && data.lead) {
+        // Sync returned lead data
+        const syncedLeads = [data.lead, ...getLeads().filter(l => l.id !== data.lead.id)];
+        inMemoryLeadsCache = syncedLeads;
+        try {
+          localStorage.setItem(LEADS_STORAGE_KEY, JSON.stringify(syncedLeads));
+        } catch (e) {
+          // ignore
+        }
+        return { success: true, lead: data.lead };
+      }
+    }
+  } catch (err) {
+    console.error('Failed to transmit lead to server database:', err);
+  }
+
+  return { success: true, lead: localLead };
 }
 
-export function updateLeadStatus(id: string, status: LeadStatus): void {
-  const leads = getLeads();
-  const updated = leads.map(item => item.id === id ? { ...item, status } : item);
-  localStorage.setItem(LEADS_STORAGE_KEY, JSON.stringify(updated));
-  window.dispatchEvent(new CustomEvent('metaresolve_leads_updated'));
+// Update lead status on server and local cache
+export async function updateLeadStatus(id: string, status: LeadStatus): Promise<void> {
+  const current = getLeads();
+  const updated = current.map(item => item.id === id ? { ...item, status } : item);
+  inMemoryLeadsCache = updated;
+  try {
+    localStorage.setItem(LEADS_STORAGE_KEY, JSON.stringify(updated));
+    window.dispatchEvent(new CustomEvent('metaresolve_leads_updated'));
+  } catch (e) {
+    // ignore
+  }
+
+  const token = getStoredAdminToken();
+  if (token) {
+    try {
+      await fetch(`/api/admin/leads/${id}/status`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ status })
+      });
+    } catch (err) {
+      console.error('Failed to sync lead status update to server:', err);
+    }
+  }
 }
 
-export function updateLeadNotes(id: string, notes: string): void {
-  const leads = getLeads();
-  const updated = leads.map(item => item.id === id ? { ...item, adminNotes: notes } : item);
-  localStorage.setItem(LEADS_STORAGE_KEY, JSON.stringify(updated));
-  window.dispatchEvent(new CustomEvent('metaresolve_leads_updated'));
+// Update lead casework notes on server and local cache
+export async function updateLeadNotes(id: string, notes: string): Promise<void> {
+  const current = getLeads();
+  const updated = current.map(item => item.id === id ? { ...item, adminNotes: notes } : item);
+  inMemoryLeadsCache = updated;
+  try {
+    localStorage.setItem(LEADS_STORAGE_KEY, JSON.stringify(updated));
+    window.dispatchEvent(new CustomEvent('metaresolve_leads_updated'));
+  } catch (e) {
+    // ignore
+  }
+
+  const token = getStoredAdminToken();
+  if (token) {
+    try {
+      await fetch(`/api/admin/leads/${id}/notes`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ notes })
+      });
+    } catch (err) {
+      console.error('Failed to sync lead notes update to server:', err);
+    }
+  }
 }
 
-export function deleteLead(id: string): void {
-  const leads = getLeads();
-  const updated = leads.filter(item => item.id !== id);
-  localStorage.setItem(LEADS_STORAGE_KEY, JSON.stringify(updated));
-  window.dispatchEvent(new CustomEvent('metaresolve_leads_updated'));
+// Delete lead from server and local cache
+export async function deleteLead(id: string): Promise<void> {
+  const current = getLeads();
+  const updated = current.filter(item => item.id !== id);
+  inMemoryLeadsCache = updated;
+  try {
+    localStorage.setItem(LEADS_STORAGE_KEY, JSON.stringify(updated));
+    window.dispatchEvent(new CustomEvent('metaresolve_leads_updated'));
+  } catch (e) {
+    // ignore
+  }
+
+  const token = getStoredAdminToken();
+  if (token) {
+    try {
+      await fetch(`/api/admin/leads/${id}`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        }
+      });
+    } catch (err) {
+      console.error('Failed to sync delete to server:', err);
+    }
+  }
 }
 
 // --- Site Configuration Controls ---
@@ -157,6 +312,22 @@ export function getSiteConfig(): SiteConfig {
   }
 }
 
+export async function fetchSiteConfigFromServer(): Promise<SiteConfig> {
+  try {
+    const res = await fetch('/api/site-config');
+    if (res.ok) {
+      const data = await res.json();
+      if (data.success && data.config) {
+        localStorage.setItem(SITE_CONFIG_STORAGE_KEY, JSON.stringify(data.config));
+        return data.config;
+      }
+    }
+  } catch (err) {
+    // ignore
+  }
+  return getSiteConfig();
+}
+
 export function updateSiteConfig(partial: Partial<SiteConfig>): SiteConfig {
   const current = getSiteConfig();
   const updated = { ...current, ...partial };
@@ -166,6 +337,19 @@ export function updateSiteConfig(partial: Partial<SiteConfig>): SiteConfig {
   } catch (e) {
     console.error('Failed to save site config', e);
   }
+
+  const token = getStoredAdminToken();
+  if (token) {
+    fetch('/api/admin/site-config', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`
+      },
+      body: JSON.stringify(updated)
+    }).catch((err) => console.error('Failed to sync site config to server:', err));
+  }
+
   return updated;
 }
 
@@ -309,4 +493,5 @@ export async function changeAdminPassword(
     return { success: false, error: 'Failed to communicate with authentication server.' };
   }
 }
+
 

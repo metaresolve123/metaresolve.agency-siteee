@@ -136,7 +136,7 @@ export const ContactForm: React.FC<ContactFormProps> = ({ initialPlatform = 'ins
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!validate()) {
@@ -147,32 +147,39 @@ export const ContactForm: React.FC<ContactFormProps> = ({ initialPlatform = 'ins
 
     // Map service string to platform type for admin storage
     let mappedPlatform: PlatformType = 'other';
-    if (formData.service.includes('Instagram')) mappedPlatform = 'instagram';
-    else if (formData.service.includes('Facebook')) mappedPlatform = 'facebook';
-    else if (formData.service.includes('TikTok')) mappedPlatform = 'tiktok';
-    else if (formData.service.includes('WhatsApp')) mappedPlatform = 'whatsapp';
+    const s = formData.service.toLowerCase();
+    if (s.includes('instagram')) mappedPlatform = 'instagram';
+    else if (s.includes('facebook')) mappedPlatform = 'facebook';
+    else if (s.includes('tiktok')) mappedPlatform = 'tiktok';
+    else if (s.includes('telegram')) mappedPlatform = 'telegram';
+    else if (s.includes('x') || s.includes('twitter')) mappedPlatform = 'x';
+    else if (s.includes('whatsapp')) mappedPlatform = 'whatsapp';
 
     // Generate unique Case Ticket ID
     const caseId = `META-${Math.floor(100000 + Math.random() * 900000)}`;
 
-    // Save lead into Admin Portal LocalStorage
-    saveLead(
-      {
-        name: formData.fullName,
-        email: formData.email,
-        phone: formData.phone,
-        service: formData.service,
-        platform: mappedPlatform,
-        accountType: formData.service,
-        banReason: 'Account Restriction / Suspension',
-        accountHandle: formData.fullName,
-        details: formData.details,
-        urgency: 'critical'
-      },
-      caseId
-    );
+    // Save lead into persistent server database and local cache
+    try {
+      await saveLead(
+        {
+          name: formData.fullName,
+          email: formData.email,
+          phone: formData.phone,
+          service: formData.service,
+          platform: mappedPlatform,
+          accountType: formData.service,
+          banReason: 'Account Restriction / Suspension',
+          accountHandle: formData.fullName,
+          details: formData.details,
+          urgency: 'critical'
+        },
+        caseId
+      );
+    } catch (saveErr) {
+      console.error('Error recording case to server:', saveErr);
+    }
 
-    // Construct structured WhatsApp pre-filled message
+    // Construct structured WhatsApp pre-filled message (preserving exact format)
     const waMessage = `Hello Adil, I need help with an account recovery issue.
 
 Name: ${formData.fullName.trim()}
@@ -197,7 +204,7 @@ I would like to discuss my case with META RESOLVE.`;
       setTimeout(() => {
         setIsSuccess(false);
       }, 4000);
-    }, 700);
+    }, 500);
   };
 
   return (

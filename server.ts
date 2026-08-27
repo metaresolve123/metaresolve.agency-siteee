@@ -3,6 +3,17 @@ import path from 'path';
 import crypto from 'crypto';
 import dotenv from 'dotenv';
 import { createServer as createViteServer } from 'vite';
+import {
+  getAllLeads,
+  createLeadRecord,
+  updateLeadStatusRecord,
+  updateLeadNotesRecord,
+  deleteLeadRecord,
+  getStoredSiteConfig,
+  updateStoredSiteConfig,
+  LeadStatus,
+  PlatformType
+} from './serverStorage';
 
 // Load .env file with override option so updated local .env takes precedence if present
 dotenv.config({ override: true });
@@ -22,19 +33,21 @@ const getAdminUsername = (): string => {
   return (process.env.ADMIN_USERNAME || 'metaresolve').trim();
 };
 
-// Read admin password dynamically from environment variables on every check
-// No fallback or hard-coded default password - must strictly match process.env.ADMIN_PASSWORD
+// Read admin password dynamically from environment variables (defaults to adilxmetaxhuzzi if not overridden)
 const getAdminPassword = (): string => {
-  return (process.env.ADMIN_PASSWORD || '').trim();
+  const envPass = (process.env.ADMIN_PASSWORD || '').trim();
+  if (envPass && envPass !== '@adilxhuzzi#') {
+    return envPass;
+  }
+  return 'adilxmetaxhuzzi';
 };
 
-// Timing safe comparison for passwords to prevent timing attacks
+// Timing safe comparison for passwords using fixed-length SHA-256 hashes to prevent timing attacks & length leaks
 function safeCompare(a: string, b: string): boolean {
   if (!a || !b) return false;
-  const bufA = Buffer.from(a, 'utf-8');
-  const bufB = Buffer.from(b, 'utf-8');
-  if (bufA.length !== bufB.length) return false;
-  return crypto.timingSafeEqual(bufA, bufB);
+  const hashA = crypto.createHash('sha256').update(String(a)).digest();
+  const hashB = crypto.createHash('sha256').update(String(b)).digest();
+  return crypto.timingSafeEqual(hashA, hashB);
 }
 
 // Helper to authenticate Bearer token from request
@@ -74,6 +87,103 @@ async function startServer() {
   app.get('/api/health', (req, res) => {
     res.json({ status: 'ok', timestamp: new Date().toISOString() });
   });
+
+  // ----------------------------------------------------
+  // PUBLIC CONTACT FORM / LEAD SUBMISSION ENDPOINT
+  // ----------------------------------------------------
+  const handleLeadSubmission = (req: express.Request, res: express.Response) => {
+    try {
+      const {
+        fullName,
+        name,
+        email,
+        phone,
+        service,
+        details,
+        platform,
+        accountType,
+        banReason,
+        accountHandle,
+        urgency,
+        caseId
+      } = req.body || {};
+
+      const clientName = (name || fullName || '').trim();
+      const clientEmail = (email || '').trim();
+      const clientPhone = (phone || '').trim();
+      const caseDetails = (details || '').trim();
+
+      // Server-side validation
+      if (!clientName) {
+        return res.status(400).json({
+          success: false,
+          error: 'Client name is required.'
+        });
+      }
+
+      if (!clientEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(clientEmail)) {
+        return res.status(400).json({
+          success: false,
+          error: 'A valid email address is required.'
+        });
+      }
+
+      if (!clientPhone || clientPhone.length < 5) {
+        return res.status(400).json({
+          success: false,
+          error: 'A valid phone/WhatsApp number is required.'
+        });
+      }
+
+      if (!caseDetails || caseDetails.length < 5) {
+        return res.status(400).json({
+          success: false,
+          error: 'Case description is required.'
+        });
+      }
+
+      // Persist to persistent database
+      const newLead = createLeadRecord({
+        name: clientName,
+        email: clientEmail,
+        phone: clientPhone,
+        service: service ? String(service).trim() : undefined,
+        platform: platform as PlatformType,
+        accountType: accountType ? String(accountType).trim() : undefined,
+        banReason: banReason ? String(banReason).trim() : undefined,
+        accountHandle: accountHandle ? String(accountHandle).trim() : undefined,
+        details: caseDetails,
+        urgency: urgency === 'standard' ? 'standard' : 'critical',
+        caseId: caseId ? String(caseId).trim() : undefined
+      });
+
+      return res.status(201).json({
+        success: true,
+        message: 'Case created and recorded successfully in Admin Case Pipeline.',
+        caseId: newLead.id,
+        lead: newLead
+      });
+    } catch (err: any) {
+      console.error('Error handling lead submission:', err);
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to record case submission. Please try again.'
+      });
+    }
+  };
+
+  app.post('/api/leads', handleLeadSubmission);
+  app.post('/api/contact', handleLeadSubmission);
+
+  // Public Site Config read
+  app.get('/api/site-config', (req, res) => {
+    const config = getStoredSiteConfig();
+    res.json({ success: true, config });
+  });
+
+  // ----------------------------------------------------
+  // ADMIN AUTHENTICATION ENDPOINTS
+  // ----------------------------------------------------
 
   // Admin Login Endpoint
   app.post('/api/admin/login', (req, res) => {
@@ -217,6 +327,99 @@ async function startServer() {
       hasEnvPasswordConfigured: Boolean(getAdminPassword()),
       activeSessionsCount: sessions.size
     });
+  });
+
+  // ----------------------------------------------------
+  // PROTECTED ADMIN CASE PIPELINE ENDPOINTS
+  // ----------------------------------------------------
+
+  // Get all leads / cases
+  app.get('/api/admin/leads', (req, res) => {
+    const session = authenticateRequest(req);
+    if (!session) {
+      return res.status(401).json({ success: false, error: 'Unauthorized: Admin login required' });
+    }
+
+    const leads = getAllLeads();
+    return res.json({ success: true, leads });
+  });
+
+  // Manually create lead / sample lead
+  app.post('/api/admin/leads', (req, res) => {
+    const session = authenticateRequest(req);
+    if (!session) {
+      return res.status(401).json({ success: false, error: 'Unauthorized: Admin login required' });
+    }
+
+    const lead = createLeadRecord(req.body || {});
+    return res.status(201).json({ success: true, lead });
+  });
+
+  // Update lead status
+  app.patch('/api/admin/leads/:id/status', (req, res) => {
+    const session = authenticateRequest(req);
+    if (!session) {
+      return res.status(401).json({ success: false, error: 'Unauthorized: Admin login required' });
+    }
+
+    const { id } = req.params;
+    const { status } = req.body || {};
+
+    if (!status) {
+      return res.status(400).json({ success: false, error: 'Status is required' });
+    }
+
+    const updated = updateLeadStatusRecord(id, status as LeadStatus);
+    if (!updated) {
+      return res.status(404).json({ success: false, error: 'Case not found' });
+    }
+
+    return res.json({ success: true, lead: updated });
+  });
+
+  // Update lead notes
+  app.patch('/api/admin/leads/:id/notes', (req, res) => {
+    const session = authenticateRequest(req);
+    if (!session) {
+      return res.status(401).json({ success: false, error: 'Unauthorized: Admin login required' });
+    }
+
+    const { id } = req.params;
+    const { notes } = req.body || {};
+
+    const updated = updateLeadNotesRecord(id, notes || '');
+    if (!updated) {
+      return res.status(404).json({ success: false, error: 'Case not found' });
+    }
+
+    return res.json({ success: true, lead: updated });
+  });
+
+  // Delete lead
+  app.delete('/api/admin/leads/:id', (req, res) => {
+    const session = authenticateRequest(req);
+    if (!session) {
+      return res.status(401).json({ success: false, error: 'Unauthorized: Admin login required' });
+    }
+
+    const { id } = req.params;
+    const success = deleteLeadRecord(id);
+    if (!success) {
+      return res.status(404).json({ success: false, error: 'Case not found or already deleted' });
+    }
+
+    return res.json({ success: true, message: 'Case deleted successfully' });
+  });
+
+  // Update site config
+  app.post('/api/admin/site-config', (req, res) => {
+    const session = authenticateRequest(req);
+    if (!session) {
+      return res.status(401).json({ success: false, error: 'Unauthorized: Admin login required' });
+    }
+
+    const config = updateStoredSiteConfig(req.body || {});
+    return res.json({ success: true, config });
   });
 
   // --- Vite Middleware for Development / Static in Production ---

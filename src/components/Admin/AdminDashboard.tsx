@@ -35,10 +35,12 @@ import {
 import { LeadRecord, LeadStatus, PlatformType, SiteConfig } from '../../types';
 import {
   getLeads,
+  fetchLeadsFromServer,
   updateLeadStatus,
   updateLeadNotes,
   deleteLead,
   getSiteConfig,
+  fetchSiteConfigFromServer,
   updateSiteConfig,
   loginAdmin,
   verifyAdminSession,
@@ -93,9 +95,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExitAdmin }) =
     setTimeout(() => setToastMessage(null), 3000);
   };
 
-  const loadLeads = () => {
-    const data = getLeads();
-    setLeads(data);
+  const loadLeads = async () => {
+    // 1. Instantly show cached leads
+    const cached = getLeads();
+    setLeads(cached);
+
+    // 2. Fetch fresh data from backend server database
+    const fresh = await fetchLeadsFromServer();
+    setLeads(fresh);
   };
 
   // Check initial server session on mount
@@ -107,6 +114,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExitAdmin }) =
         if (isValid) {
           setIsAuthenticated(true);
           loadLeads();
+          fetchSiteConfigFromServer().then((cfg) => setSiteConfig(cfg));
         } else {
           setIsAuthenticated(false);
         }
@@ -118,11 +126,30 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExitAdmin }) =
     };
   }, []);
 
+  // Real-time synchronization: poll server every 6 seconds when authenticated
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
+    const interval = setInterval(() => {
+      fetchLeadsFromServer().then((latest) => {
+        setLeads((prev) => {
+          // If counts or latest id changed, notify
+          if (latest.length > prev.length) {
+            showToast('New case inquiry received!');
+          }
+          return latest;
+        });
+      });
+    }, 6000);
+
+    return () => clearInterval(interval);
+  }, [isAuthenticated]);
+
   // Listen for storage events (e.g. form submitted in another tab or lead added)
   useEffect(() => {
     const handleLeadAdded = () => {
       loadLeads();
-      showToast('New lead inquiry received!');
+      showToast('New case inquiry received!');
     };
     const handleLeadsUpdated = () => {
       loadLeads();
@@ -147,7 +174,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExitAdmin }) =
 
     if (res.success) {
       setIsAuthenticated(true);
-      loadLeads();
+      await loadLeads();
+      const cfg = await fetchSiteConfigFromServer();
+      setSiteConfig(cfg);
       setPasswordInput('');
     } else {
       setLoginError(res.error || 'Invalid username or password.');
@@ -180,16 +209,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExitAdmin }) =
   }, [leads, searchQuery, platformFilter, statusFilter, urgencyFilter]);
 
   // Lead Actions
-  const handleStatusChange = (id: string, newStatus: LeadStatus) => {
-    updateLeadStatus(id, newStatus);
-    loadLeads();
+  const handleStatusChange = async (id: string, newStatus: LeadStatus) => {
+    await updateLeadStatus(id, newStatus);
+    await loadLeads();
     showToast(`Status updated to "${newStatus.toUpperCase()}"`);
   };
 
-  const handleDeleteLead = (id: string, name: string) => {
+  const handleDeleteLead = async (id: string, name: string) => {
     if (window.confirm(`Are you sure you want to delete lead #${id} (${name})?`)) {
-      deleteLead(id);
-      loadLeads();
+      await deleteLead(id);
+      await loadLeads();
       if (selectedLead?.id === id) {
         setSelectedLead(null);
       }
@@ -197,10 +226,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExitAdmin }) =
     }
   };
 
-  const handleSaveNotes = () => {
+  const handleSaveNotes = async () => {
     if (selectedLead) {
-      updateLeadNotes(selectedLead.id, caseworkNotes);
-      loadLeads();
+      await updateLeadNotes(selectedLead.id, caseworkNotes);
+      await loadLeads();
       setSelectedLead((prev) => prev ? { ...prev, adminNotes: caseworkNotes } : null);
       showToast('Casework notes saved');
     }
@@ -280,7 +309,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExitAdmin }) =
     showToast('Leads CSV exported');
   };
 
-  const handleCreateTestLead = () => {
+  const handleCreateTestLead = async () => {
     const platforms: PlatformType[] = ['instagram', 'facebook', 'tiktok', 'whatsapp', 'telegram'];
     const randomPlatform = platforms[Math.floor(Math.random() * platforms.length)];
     const sample = {
@@ -293,8 +322,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExitAdmin }) =
       details: 'Automated test inquiry created from Admin Panel to test lead intake pipeline and WhatsApp routing.',
       urgency: Math.random() > 0.5 ? ('critical' as const) : ('standard' as const),
     };
-    saveLead(sample);
-    loadLeads();
+    await saveLead(sample);
+    await loadLeads();
     showToast('Sample test lead created');
   };
 
