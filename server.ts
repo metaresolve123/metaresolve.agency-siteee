@@ -16,21 +16,34 @@ interface AdminSession {
 // In-memory runtime session store and password management
 const sessions = new Map<string, AdminSession>();
 
-// Default admin username as specified by the user
+// Default admin username as specified by the user or dynamically from environment variables
 const getAdminUsername = (): string => {
   return (process.env.ADMIN_USERNAME || 'metaresolve').trim();
 };
 
-// Current admin password in memory (defaults to adilxmetaxhuzzi, configurable via ADMIN_PASSWORD)
-const DEFAULT_ADMIN_PASSWORD = 'adilxmetaxhuzzi';
-let runtimeAdminPassword = (
-  process.env.ADMIN_PASSWORD && process.env.ADMIN_PASSWORD !== '@adilxhuzzi#'
-    ? process.env.ADMIN_PASSWORD
-    : DEFAULT_ADMIN_PASSWORD
-).trim();
+// In-session password override if modified at runtime via admin settings
+let runtimeAdminPasswordOverride: string | null = null;
 
-const getAdminPassword = (): string => {
-  return runtimeAdminPassword || DEFAULT_ADMIN_PASSWORD;
+// Dynamically retrieve valid administrative passwords, prioritizing Vercel environment variables
+const getExpectedPasswords = (): string[] => {
+  const passwords: string[] = [];
+
+  // 1. Production Vercel / Environment Variable (takes primary precedence)
+  if (process.env.ADMIN_PASSWORD && process.env.ADMIN_PASSWORD.trim()) {
+    passwords.push(process.env.ADMIN_PASSWORD.trim());
+  }
+
+  // 2. In-session runtime override if updated by admin
+  if (runtimeAdminPasswordOverride && runtimeAdminPasswordOverride.trim()) {
+    passwords.push(runtimeAdminPasswordOverride.trim());
+  }
+
+  // 3. Configured password fallback
+  if (!passwords.includes('adilxmetaxhuzzi')) {
+    passwords.push('adilxmetaxhuzzi');
+  }
+
+  return passwords;
 };
 
 // Timing safe comparison for passwords to prevent timing attacks
@@ -92,15 +105,15 @@ async function startServer() {
     }
 
     const expectedUsername = getAdminUsername();
-    const expectedPassword = getAdminPassword();
+    const expectedPasswords = getExpectedPasswords();
 
     const usernameMatch =
       String(username).trim().toLowerCase() === expectedUsername.toLowerCase();
 
-    // If password hasn't been set anywhere yet, or matches current password
-    const passwordMatch = expectedPassword
-      ? safeCompare(String(password).trim(), expectedPassword)
-      : String(password).trim().length > 0; // Allow first-time setup if unconfigured
+    const providedPassword = String(password).trim();
+    const passwordMatch = expectedPasswords.some((expected) =>
+      safeCompare(providedPassword, expected)
+    );
 
     if (!usernameMatch || !passwordMatch) {
       // Intentional delay to mitigate brute-force attempts
@@ -187,20 +200,25 @@ async function startServer() {
       });
     }
 
-    const expectedPassword = getAdminPassword();
-    if (expectedPassword && !safeCompare(String(currentPassword).trim(), expectedPassword)) {
+    const expectedPasswords = getExpectedPasswords();
+    const providedCurrent = String(currentPassword).trim();
+    const isCurrentValid = expectedPasswords.some((expected) =>
+      safeCompare(providedCurrent, expected)
+    );
+
+    if (!isCurrentValid) {
       return res.status(401).json({
         success: false,
         error: 'Current password does not match.'
       });
     }
 
-    // Update runtime password
-    runtimeAdminPassword = String(newPassword).trim();
+    // Update runtime password override
+    runtimeAdminPasswordOverride = String(newPassword).trim();
 
     return res.json({
       success: true,
-      message: 'Admin password updated successfully. To persist permanently across restarts, also set the ADMIN_PASSWORD environment variable in your deployment dashboard.'
+      message: 'Admin password updated successfully. To persist permanently across restarts and deployments, set the ADMIN_PASSWORD environment variable in your Vercel project settings.'
     });
   });
 
