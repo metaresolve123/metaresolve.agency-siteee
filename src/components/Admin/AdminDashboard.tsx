@@ -941,6 +941,141 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExitAdmin }) =
                   />
                 </div>
 
+                {/* Founder Profile Photo */}
+                {/* Founder Profile Photo */}
+                <div className="p-4 rounded-xl bg-[#090D0D] border border-white/5 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <span className="text-xs font-mono font-bold uppercase text-[#F2F5EF] block">
+                        Founder Profile Photo (Adil Afridi)
+                      </span>
+                      <span className="text-[11px] text-[#8C9891]">
+                        Uploaded photo is active for Adil Afridi on the website.
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-4">
+                    <div className="w-16 h-16 rounded-full p-[2px] bg-gradient-to-tr from-[#86D416] via-[#B7FF35] to-[#467320] shrink-0">
+                      <div className="w-full h-full rounded-full overflow-hidden bg-[#0A0F0E]">
+                        <img
+                          src={siteConfig.founderAvatarUrl || '/Screenshot_20260327-120047~2.jpg.jpeg'}
+                          alt="Founder Preview"
+                          className="w-full h-full object-cover object-[center_15%]"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex-1 space-y-2">
+                      <label className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#14201C] border border-[#B7FF35]/30 text-xs font-mono text-[#B7FF35] hover:bg-[#B7FF35]/10 cursor-pointer transition-colors">
+                        <span>Upload New Photo</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) {
+                              const reader = new FileReader();
+                              reader.onload = (uploadEvt) => {
+                                if (uploadEvt.target?.result) {
+                                  setSiteConfig({
+                                    ...siteConfig,
+                                    founderAvatarUrl: uploadEvt.target.result as string
+                                  });
+                                }
+                              };
+                              reader.readAsDataURL(file);
+                            }
+                          }}
+                        />
+                      </label>
+
+                      {siteConfig.founderAvatarUrl && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const { founderAvatarUrl, ...rest } = siteConfig;
+                            setSiteConfig(rest);
+                          }}
+                          className="block text-[11px] font-mono text-[#FF5555] hover:underline"
+                        >
+                          Reset to default uploaded photo
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Co-Founder Profile Photo */}
+                <div className="p-4 rounded-xl bg-[#090D0D] border border-white/5 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <span className="text-xs font-mono font-bold uppercase text-[#F2F5EF] block">
+                        Co-Founder Profile Photo (Huzaifa)
+                      </span>
+                      <span className="text-[11px] text-[#8C9891]">
+                        Uploaded photo is active for Huzaifa on the website.
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-4">
+                    <div className="w-16 h-16 rounded-full p-[2px] bg-gradient-to-tr from-[#86D416] via-[#B7FF35] to-[#467320] shrink-0">
+                      <div className="w-full h-full rounded-full overflow-hidden bg-[#0A0F0E] flex items-center justify-center">
+                        {siteConfig.huzaifaAvatarUrl ? (
+                          <img
+                            src={siteConfig.huzaifaAvatarUrl}
+                            alt="Huzaifa Preview"
+                            className="w-full h-full object-cover object-center"
+                          />
+                        ) : (
+                          <span className="text-sm font-mono font-bold text-[#B7FF35]">HZ</span>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="flex-1 space-y-2">
+                      <label className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#14201C] border border-[#B7FF35]/30 text-xs font-mono text-[#B7FF35] hover:bg-[#B7FF35]/10 cursor-pointer transition-colors">
+                        <span>Upload Huzaifa Photo</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) {
+                              const reader = new FileReader();
+                              reader.onload = (uploadEvt) => {
+                                if (uploadEvt.target?.result) {
+                                  setSiteConfig({
+                                    ...siteConfig,
+                                    huzaifaAvatarUrl: uploadEvt.target.result as string
+                                  });
+                                }
+                              };
+                              reader.readAsDataURL(file);
+                            }
+                          }}
+                        />
+                      </label>
+
+                      {siteConfig.huzaifaAvatarUrl && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const { huzaifaAvatarUrl, ...rest } = siteConfig;
+                            setSiteConfig(rest);
+                          }}
+                          className="block text-[11px] font-mono text-[#FF5555] hover:underline"
+                        >
+                          Reset photo
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
                 {/* Casework Status */}
                 <div>
                   <label className="block text-xs font-mono font-bold uppercase text-[#F2F5EF] mb-2">

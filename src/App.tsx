@@ -21,7 +21,7 @@ import { BanAssessmentModal } from './components/BanAssessmentModal';
 import { FloatingEmergencyBar } from './components/FloatingEmergencyBar';
 import { AdminDashboard } from './components/Admin/AdminDashboard';
 import { PlatformType, PricingPlan, SiteConfig } from './types';
-import { getSiteConfig } from './utils/adminStorage';
+import { getSiteConfig, fetchSiteConfigFromServer } from './utils/adminStorage';
 import { Zap, ShieldCheck } from 'lucide-react';
 
 export default function App() {
@@ -37,6 +37,13 @@ export default function App() {
   const [isAssessmentOpen, setIsAssessmentOpen] = useState(false);
   const [selectedPlatform, setSelectedPlatform] = useState<PlatformType>('instagram');
   const [siteConfig, setSiteConfig] = useState<SiteConfig>(getSiteConfig());
+
+  // Initial fetch of server config to sync across clients
+  useEffect(() => {
+    fetchSiteConfigFromServer().then((cfg) => {
+      if (cfg) setSiteConfig(cfg);
+    });
+  }, []);
 
   // URL Hash / Route listener for #admin
   useEffect(() => {

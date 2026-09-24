@@ -25,6 +25,8 @@ export interface SiteConfig {
   whatsappNumber: string;
   whatsappDisplayNumber: string;
   founderName: string;
+  founderAvatarUrl?: string;
+  huzaifaAvatarUrl?: string;
   caseworkStatus: 'Open' | 'High Priority Only' | 'Limited Intake';
   bannerAnnouncement: string;
   bannerEnabled: boolean;

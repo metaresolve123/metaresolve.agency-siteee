@@ -3,18 +3,71 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import { motion } from 'motion/react';
-import { CheckCircle2, ArrowRight, MessageCircle, Shield, Award, Sparkles, Lock, ExternalLink } from 'lucide-react';
+import { CheckCircle2, ArrowRight, MessageCircle, Shield, Award, Sparkles, Lock, ExternalLink, Camera, UploadCloud } from 'lucide-react';
 import { TEAM_MEMBERS } from '../data/mockData';
 import { TeamMember } from '../types';
-import { WHATSAPP_DISPLAY_NUMBER, HUZAIFA_WHATSAPP_DISPLAY_NUMBER } from '../config';
+import { WHATSAPP_DISPLAY_NUMBER, HUZAIFA_WHATSAPP_DISPLAY_NUMBER, getWhatsAppUrl } from '../config';
+import { getSiteConfig } from '../utils/adminStorage';
 
 interface TeamSectionProps {
   onContactSpecialist?: (specialistName: string) => void;
 }
 
 export const TeamSection: React.FC<TeamSectionProps> = ({ onContactSpecialist }) => {
+  const [siteConfig, setSiteConfig] = useState(getSiteConfig());
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isUploading, setIsUploading] = useState(false);
+
+  useEffect(() => {
+    const handleConfigUpdated = (e: any) => {
+      if (e?.detail) {
+        setSiteConfig(e.detail);
+      } else {
+        setSiteConfig(getSiteConfig());
+      }
+    };
+
+    window.addEventListener('metaresolve_config_updated', handleConfigUpdated);
+    return () => {
+      window.removeEventListener('metaresolve_config_updated', handleConfigUpdated);
+    };
+  }, []);
+
+  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>, target: 'founder' | 'huzaifa') => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setIsUploading(true);
+      const reader = new FileReader();
+      reader.onload = async (event) => {
+        if (event.target?.result) {
+          const photoUrl = event.target.result as string;
+          const currentConfig = getSiteConfig();
+          const key = target === 'founder' ? 'founderAvatarUrl' : 'huzaifaAvatarUrl';
+          const endpoint = target === 'founder' ? '/api/founder-photo' : '/api/huzaifa-photo';
+          const updated = { ...currentConfig, [key]: photoUrl };
+          localStorage.setItem('metaresolve_site_config', JSON.stringify(updated));
+          setSiteConfig(updated);
+          window.dispatchEvent(new CustomEvent('metaresolve_config_updated', { detail: updated }));
+
+          try {
+            await fetch(endpoint, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ photoDataUrl: photoUrl })
+            });
+          } catch (err) {
+            console.error(`Failed to sync ${target} photo:`, err);
+          } finally {
+            setIsUploading(false);
+          }
+        }
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
   const handleMessageClick = (member: TeamMember) => {
     if (member.directContactUrl) {
       window.open(member.directContactUrl, '_blank', 'noopener,noreferrer');
@@ -58,7 +111,13 @@ export const TeamSection: React.FC<TeamSectionProps> = ({ onContactSpecialist })
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8 lg:gap-10 max-w-5xl mx-auto">
           {TEAM_MEMBERS.map((member, index) => {
             const isFounder = member.isFounder;
+            const isHuzaifa = member.id === 'huzaifa';
             const directNumber = isFounder ? WHATSAPP_DISPLAY_NUMBER : HUZAIFA_WHATSAPP_DISPLAY_NUMBER;
+            const displayName = isFounder && siteConfig.founderName ? siteConfig.founderName : member.name;
+            const displayRole = member.role;
+            const displayAvatar = isFounder 
+              ? ((siteConfig as any).founderAvatarUrl || member.avatarUrl)
+              : ((siteConfig as any).huzaifaAvatarUrl || member.avatarUrl);
 
             return (
               <motion.div
@@ -99,16 +158,51 @@ export const TeamSection: React.FC<TeamSectionProps> = ({ onContactSpecialist })
 
                   {/* Profile Photo with Refined Glow Ring & Verified Badge */}
                   <div className="relative mb-5 group-hover:scale-[1.02] transition-transform duration-300">
-                    <div className="w-32 h-32 sm:w-36 sm:h-36 rounded-full p-[3px] bg-gradient-to-tr from-[#86D416] via-[#B7FF35] to-[#467320] shadow-[0_0_25px_rgba(183,255,53,0.22)] group-hover:shadow-[0_0_35px_rgba(183,255,53,0.4)] transition-all duration-300">
-                      <div className="w-full h-full rounded-full overflow-hidden bg-[#0A0F0E]">
-                        <img
-                          src={member.avatarUrl}
-                          alt={`${member.name} - ${member.role}`}
-                          className="w-full h-full object-cover object-center"
-                          loading="lazy"
-                          referrerPolicy="no-referrer"
-                        />
+                    <div className="w-32 h-32 sm:w-36 sm:h-36 rounded-full p-[3px] bg-gradient-to-tr from-[#86D416] via-[#B7FF35] to-[#467320] shadow-[0_0_25px_rgba(183,255,53,0.22)] group-hover:shadow-[0_0_35px_rgba(183,255,53,0.4)] transition-all duration-300 relative">
+                      <div className="w-full h-full rounded-full overflow-hidden bg-[#0A0F0E] flex items-center justify-center">
+                        {isFounder && !siteConfig.founderAvatarUrl ? (
+                          <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-[#121A17] to-[#0A0F0E] text-[#B7FF35]">
+                            <span className="text-3xl font-extrabold font-display tracking-widest text-[#F2F5EF]">
+                              AA
+                            </span>
+                            <span className="text-[9px] font-mono font-bold uppercase tracking-wider text-[#B7FF35] mt-1">
+                              Founder
+                            </span>
+                          </div>
+                        ) : isHuzaifa && !siteConfig.huzaifaAvatarUrl ? (
+                          <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-[#121A17] to-[#0A0F0E] text-[#B7FF35]">
+                            <span className="text-3xl font-extrabold font-display tracking-widest text-[#F2F5EF]">
+                              HZ
+                            </span>
+                            <span className="text-[9px] font-mono font-bold uppercase tracking-wider text-[#B7FF35] mt-1">
+                              Co-Founder
+                            </span>
+                          </div>
+                        ) : (
+                          <img
+                            src={displayAvatar}
+                            alt={`${displayName} - ${displayRole}`}
+                            className={`w-full h-full object-cover ${isFounder ? 'object-[center_15%]' : 'object-center'}`}
+                            style={{ borderRadius: '50%' }}
+                            loading="lazy"
+                            referrerPolicy="no-referrer"
+                          />
+                        )}
                       </div>
+
+                      {/* Photo upload camera icon on hover for founder & co-founder */}
+                      <label
+                        className="absolute -top-1 -right-1 w-8 h-8 rounded-full bg-[#111A17] border border-[#B7FF35]/50 hover:bg-[#B7FF35] hover:text-[#090D0D] text-[#B7FF35] flex items-center justify-center cursor-pointer transition-all shadow-lg z-20"
+                        title={isFounder ? "Upload Founder photo (Screenshot_20260327-120047~2)" : "Upload Co-Founder photo (WhatsApp Image 2026-08-23 at 3.03.52 AM)"}
+                      >
+                        <Camera className="w-4 h-4" />
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) => handlePhotoUpload(e, isFounder ? 'founder' : 'huzaifa')}
+                        />
+                      </label>
                     </div>
 
                     {/* Official Verified check badge */}
@@ -120,15 +214,32 @@ export const TeamSection: React.FC<TeamSectionProps> = ({ onContactSpecialist })
                     </div>
                   </div>
 
-                  {/* Member Name */}
-                  <h3 className="text-2xl sm:text-3xl font-extrabold text-[#F2F5EF] tracking-tight mb-1 group-hover:text-white transition-colors">
-                    {member.name}
+                  {/* Member Name (Displayed directly above role) */}
+                  <h3 className="text-2xl sm:text-3xl font-extrabold text-[#F2F5EF] tracking-tight mb-1 group-hover:text-white transition-colors font-display">
+                    {displayName}
                   </h3>
 
-                  {/* Role Title in Neon-Lime Monospace */}
+                  {/* Role Title in Neon-Lime Monospace (Displayed below name) */}
                   <div className="text-[11px] sm:text-xs font-mono font-bold tracking-[0.18em] text-[#B7FF35] uppercase mb-4">
-                    {member.role}
+                    {displayRole}
                   </div>
+
+                  {/* Quick Photo Upload Trigger if photo not yet attached */}
+                  {((isFounder && !siteConfig.founderAvatarUrl) || (isHuzaifa && !siteConfig.huzaifaAvatarUrl)) && (
+                    <label
+                      className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#B7FF35]/15 hover:bg-[#B7FF35]/25 border border-[#B7FF35]/40 text-[#B7FF35] text-[11px] font-mono cursor-pointer transition-all mb-4"
+                      title={isFounder ? "Upload photo (Screenshot_20260327)" : "Upload photo (WhatsApp Image 2026-08-23 at 3.03.52 AM)"}
+                    >
+                      <UploadCloud className="w-3.5 h-3.5" />
+                      <span>{isFounder ? 'Attach Photo (Screenshot_20260327)' : 'Attach Photo (WhatsApp Image)'}</span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(e) => handlePhotoUpload(e, isFounder ? 'founder' : 'huzaifa')}
+                      />
+                    </label>
+                  )}
 
                   {/* Bio Narrative */}
                   <p className="text-xs sm:text-sm text-[#A0AAA3] leading-relaxed max-w-md mx-auto mb-6">
@@ -150,19 +261,21 @@ export const TeamSection: React.FC<TeamSectionProps> = ({ onContactSpecialist })
 
                 {/* Card Footer: WhatsApp Action & Direct Number */}
                 <div className="w-full pt-6 border-t border-white/[0.06] flex flex-col items-center gap-2.5 relative z-10">
-                  <button
-                    onClick={() => handleMessageClick(member)}
-                    className={`w-full py-3.5 px-6 rounded-xl text-xs sm:text-sm uppercase tracking-wider font-bold transition-all duration-200 flex items-center justify-center gap-2.5 cursor-pointer shadow-lg active:scale-[0.98] ${
+                  <a
+                    href={member.directContactUrl || (isFounder ? getWhatsAppUrl() : 'https://wa.me/447898154326?text=' + encodeURIComponent('Hello Huzaifa, I would like to discuss an account recovery case with META RESOLVE.'))}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={`w-full py-3.5 px-6 rounded-xl text-xs sm:text-sm uppercase tracking-wider font-bold transition-all duration-200 flex items-center justify-center gap-2 cursor-pointer shadow-lg active:scale-[0.98] ${
                       isFounder
                         ? 'bg-[#B7FF35] hover:bg-[#C7FF45] text-[#090D0D] shadow-[0_0_25px_rgba(183,255,53,0.3)] hover:shadow-[0_0_35px_rgba(183,255,53,0.5)]'
                         : 'bg-[#182320] hover:bg-[#B7FF35] text-[#F2F5EF] hover:text-[#090D0D] border border-[#B7FF35]/40 hover:border-[#B7FF35] shadow-[0_0_20px_rgba(183,255,53,0.15)] hover:shadow-[0_0_30px_rgba(183,255,53,0.35)]'
                     }`}
                     id={`team-cta-${member.id}`}
                   >
-                    <MessageCircle className="w-4 h-4 fill-current stroke-[2.5]" />
+                    {isFounder && <MessageCircle className="w-4 h-4 fill-current stroke-[2.5]" />}
                     <span>{member.ctaText}</span>
-                    <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-                  </button>
+                    <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform ml-1" />
+                  </a>
 
                   <div className="flex items-center gap-1.5 text-[11px] font-mono text-[#8C9891] pt-0.5">
                     <span>Direct Line:</span>

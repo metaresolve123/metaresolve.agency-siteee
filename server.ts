@@ -2,7 +2,6 @@ import express from 'express';
 import path from 'path';
 import crypto from 'crypto';
 import dotenv from 'dotenv';
-import { createServer as createViteServer } from 'vite';
 import {
   getAllLeads,
   createLeadRecord,
@@ -10,10 +9,9 @@ import {
   updateLeadNotesRecord,
   deleteLeadRecord,
   getStoredSiteConfig,
-  updateStoredSiteConfig,
-  LeadStatus,
-  PlatformType
-} from './serverStorage';
+  updateStoredSiteConfig
+} from './serverStorage.ts';
+import type { LeadStatus, PlatformType } from './serverStorage.ts';
 
 // Load .env file with override option so updated local .env takes precedence if present
 dotenv.config({ override: true });
@@ -75,7 +73,8 @@ function authenticateRequest(req: express.Request): AdminSession | null {
 
 async function startServer() {
   const app = express();
-  const PORT = 3000;
+  const isDev = process.env.NODE_ENV === 'development' && !!process.env.DEFAULT_APP_PORT;
+  const PORT = isDev ? (Number(process.env.DEFAULT_APP_PORT) || 3000) : (Number(process.env.PORT) || 8080);
 
   // JSON and URL-encoded body parsers
   app.use(express.json({ limit: '10mb' }));
@@ -422,8 +421,31 @@ async function startServer() {
     return res.json({ success: true, config });
   });
 
+  // Direct founder photo update endpoint
+  app.post('/api/founder-photo', (req, res) => {
+    const { photoDataUrl } = req.body || {};
+    if (!photoDataUrl || typeof photoDataUrl !== 'string') {
+      return res.status(400).json({ success: false, error: 'Invalid photo data' });
+    }
+
+    const config = updateStoredSiteConfig({ founderAvatarUrl: photoDataUrl });
+    return res.json({ success: true, config });
+  });
+
+  // Direct huzaifa photo update endpoint
+  app.post('/api/huzaifa-photo', (req, res) => {
+    const { photoDataUrl } = req.body || {};
+    if (!photoDataUrl || typeof photoDataUrl !== 'string') {
+      return res.status(400).json({ success: false, error: 'Invalid photo data' });
+    }
+
+    const config = updateStoredSiteConfig({ huzaifaAvatarUrl: photoDataUrl });
+    return res.json({ success: true, config });
+  });
+
   // --- Vite Middleware for Development / Static in Production ---
-  if (process.env.NODE_ENV !== 'production') {
+  if (isDev) {
+    const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: 'spa'

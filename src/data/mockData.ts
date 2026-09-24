@@ -158,11 +158,11 @@ export const TEAM_MEMBERS: TeamMember[] = [
       'Telegram Recovery',
       'X Account Recovery'
     ],
-    ctaText: 'Message Huzaifa on WhatsApp',
+    ctaText: '💬 Message Huzaifa',
     isFounder: false,
     casesResolved: 640,
     status: 'Direct WhatsApp Line',
-    directContactUrl: getHuzaifaWhatsAppUrl('Hello Huzaifa, I would like to discuss an account recovery case with META RESOLVE.')
+    directContactUrl: 'https://wa.me/447898154326?text=' + encodeURIComponent('Hello Huzaifa, I would like to discuss an account recovery case with META RESOLVE.')
   }
 ];
 
