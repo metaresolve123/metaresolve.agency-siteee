@@ -1,0 +1,32 @@
+[
+  {
+    "id": "USR-1001",
+    "name": "Verified Client",
+    "email": "client@metaresolve.com",
+    "passwordHash": "f7227c3f26ed2b75b6d28c19fd11ad7f00016e93dbf8c9398caf72af29fd1c2bfa06ee24d63fd93c39b302fb021b8c1655cced99a243183431240a99049912b7",
+    "salt": "8b101c68451715f80e0ca654bd9673d2",
+    "authProvider": "local",
+    "createdAt": "2026-09-29T15:10:29.548Z",
+    "lastLoginAt": "2026-09-29T15:10:29.548Z"
+  },
+  {
+    "id": "USR-12907",
+    "name": "Alex Rivera",
+    "email": "alex@example.com",
+    "passwordHash": "997713c7c9cefc06031064cf00c42d91407973c6a5462e50ca513cbe0cab5011564212960e43b82219b67d93c957675561c22ca0dc8e44ff039fc6c0384edb45",
+    "salt": "10167010d67ca588dbe69bf82487e5ea",
+    "authProvider": "local",
+    "createdAt": "2026-09-29T15:10:35.473Z",
+    "lastLoginAt": "2026-09-29T15:11:04.291Z"
+  },
+  {
+    "id": "USR-24060",
+    "name": "Demo Test",
+    "email": "demo@metaresolve.com",
+    "passwordHash": "38621689a14b4652cdd26b8ded23b02d658a6cdcd953efb16afd68d1c9ff3836973a88719091eb4dd41ad2fa751b9f8a99a269b0c75ffda4e530277529d6b448",
+    "salt": "f201387aff41b82a203ccde8d28ad6f6",
+    "authProvider": "local",
+    "createdAt": "2026-09-29T15:19:55.659Z",
+    "lastLoginAt": "2026-09-29T15:20:08.391Z"
+  }
+]

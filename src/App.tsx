@@ -20,8 +20,12 @@ import { Footer } from './components/Footer';
 import { BanAssessmentModal } from './components/BanAssessmentModal';
 import { FloatingEmergencyBar } from './components/FloatingEmergencyBar';
 import { AdminDashboard } from './components/Admin/AdminDashboard';
-import { PlatformType, PricingPlan, SiteConfig } from './types';
+import { IntroSplash } from './components/Auth/IntroSplash';
+import { AuthPage } from './components/Auth/AuthPage';
+import { AccountModal } from './components/Auth/AccountModal';
+import { PlatformType, PricingPlan, SiteConfig, AuthUser } from './types';
 import { getSiteConfig, fetchSiteConfigFromServer } from './utils/adminStorage';
+import { fetchCurrentUser, logoutUser, getStoredUser } from './utils/userAuth';
 import { Zap, ShieldCheck } from 'lucide-react';
 
 export default function App() {
@@ -34,15 +38,38 @@ export default function App() {
     return false;
   });
 
+  const [hasSeenIntro, setHasSeenIntro] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      return sessionStorage.getItem('metaresolve_intro_seen') === 'true';
+    }
+    return false;
+  });
+
+  const [currentUser, setCurrentUser] = useState<AuthUser | null>(() => getStoredUser());
+  const [isAuthChecking, setIsAuthChecking] = useState<boolean>(true);
+  const [isAccountModalOpen, setIsAccountModalOpen] = useState<boolean>(false);
+
   const [isAssessmentOpen, setIsAssessmentOpen] = useState(false);
   const [selectedPlatform, setSelectedPlatform] = useState<PlatformType>('instagram');
   const [siteConfig, setSiteConfig] = useState<SiteConfig>(getSiteConfig());
 
-  // Initial fetch of server config to sync across clients
+  // Check current session & sync server config on mount
   useEffect(() => {
     fetchSiteConfigFromServer().then((cfg) => {
       if (cfg) setSiteConfig(cfg);
     });
+
+    fetchCurrentUser().then((user) => {
+      setCurrentUser(user);
+      setIsAuthChecking(false);
+    });
+
+    const handleAuthChanged = (e: any) => {
+      setCurrentUser(e.detail || null);
+    };
+
+    window.addEventListener('metaresolve_auth_changed', handleAuthChanged);
+    return () => window.removeEventListener('metaresolve_auth_changed', handleAuthChanged);
   }, []);
 
   // URL Hash / Route listener for #admin
@@ -96,6 +123,12 @@ export default function App() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
+  const handleLogout = async () => {
+    await logoutUser();
+    setCurrentUser(null);
+    setIsAccountModalOpen(false);
+  };
+
   const handleSelectPlatformForQuote = (platform: PlatformType) => {
     setSelectedPlatform(platform);
     scrollToSection('contact');
@@ -116,11 +149,35 @@ export default function App() {
     scrollToSection('contact');
   };
 
-  // If in Admin route, render full Admin Panel
+  // If in Admin route, render dedicated Admin Panel
   if (isAdminView) {
     return <AdminDashboard onExitAdmin={handleExitAdmin} />;
   }
 
+  // Phase 1: Initial Animated Splash/Intro Screen (once per browser session)
+  if (!hasSeenIntro) {
+    return (
+      <IntroSplash
+        onFinish={() => {
+          sessionStorage.setItem('metaresolve_intro_seen', 'true');
+          setHasSeenIntro(true);
+        }}
+      />
+    );
+  }
+
+  // Phase 2: Visitor Authentication Page (if not logged in)
+  if (!isAuthChecking && !currentUser) {
+    return (
+      <AuthPage
+        onAuthSuccess={(user) => {
+          setCurrentUser(user);
+        }}
+      />
+    );
+  }
+
+  // Phase 3: Authenticated Main META RESOLVE Website
   return (
     <div className="min-h-screen bg-[#090D0D] text-[#F2F5EF] relative selection:bg-[#B7FF35] selection:text-[#090D0D]">
       
@@ -137,6 +194,9 @@ export default function App() {
       <Navbar
         onOpenAssessment={() => setIsAssessmentOpen(true)}
         onScrollToSection={scrollToSection}
+        currentUser={currentUser}
+        onOpenAccountModal={() => setIsAccountModalOpen(true)}
+        onLogout={handleLogout}
       />
 
       {/* Main Page Landmark */}
@@ -200,6 +260,16 @@ export default function App() {
         onClose={() => setIsAssessmentOpen(false)}
         onProceedToForm={handleProceedFromAssessment}
       />
+
+      {/* User Account / Settings Modal */}
+      {currentUser && (
+        <AccountModal
+          isOpen={isAccountModalOpen}
+          onClose={() => setIsAccountModalOpen(false)}
+          currentUser={currentUser}
+          onLogout={handleLogout}
+        />
+      )}
 
     </div>
   );
