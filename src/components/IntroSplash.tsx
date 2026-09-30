@@ -4,8 +4,8 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
-import { ShieldCheck, ArrowRight, Sparkles } from 'lucide-react';
+import { motion } from 'motion/react';
+import { ShieldCheck, ArrowRight } from 'lucide-react';
 
 interface IntroSplashProps {
   onFinish: () => void;
@@ -16,13 +16,13 @@ export const IntroSplash: React.FC<IntroSplashProps> = ({ onFinish }) => {
   const [progress, setProgress] = useState<number>(0);
 
   useEffect(() => {
-    // Step progression sequence (approx 3.2s total)
+    // Step progression sequence (approx 2.8s total)
     // 0: Dark screen appears (0ms)
     // 1: Glow fades in (200ms)
     // 2: "META" appears (500ms)
     // 3: "RESOLVE" slides in (900ms)
     // 4: Neon-lime accent line & taglines fade in (1400ms)
-    // 5: Progress bar completes & transition trigger (2800ms)
+    // 5: Progress bar completes & transition trigger
     const t1 = setTimeout(() => setStep(1), 200);
     const t2 = setTimeout(() => setStep(2), 500);
     const t3 = setTimeout(() => setStep(3), 900);
