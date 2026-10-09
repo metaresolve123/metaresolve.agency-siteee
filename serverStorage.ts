@@ -5,6 +5,38 @@ import crypto from 'crypto';
 export type PlatformType = 'instagram' | 'facebook' | 'tiktok' | 'telegram' | 'x' | 'whatsapp' | 'other';
 export type LeadStatus = 'new' | 'reviewing' | 'appealing' | 'resolved' | 'declined';
 
+export interface StoredUser {
+  id: string;
+  name: string;
+  email: string;
+  passwordHash?: string;
+  salt?: string;
+  authProvider: 'local' | 'google';
+  googleId?: string;
+  avatarUrl?: string;
+  resetToken?: string;
+  resetTokenExpiry?: number;
+  createdAt: string;
+  lastLoginAt: string;
+}
+
+export interface UserSession {
+  token: string;
+  userId: string;
+  createdAt: number;
+  expiresAt: number;
+  rememberMe: boolean;
+}
+
+export interface SanitizedUser {
+  id: string;
+  name: string;
+  email: string;
+  authProvider: 'local' | 'google';
+  avatarUrl?: string;
+  createdAt: string;
+}
+
 export interface LeadRecord {
   id: string;
   createdAt: string;
@@ -38,6 +70,7 @@ const DEFAULT_SITE_CONFIG: SiteConfig = {
   whatsappNumber: '923372430274',
   whatsappDisplayNumber: '+92 337 2430274',
   founderName: 'Adil Afridi',
+  huzaifaAvatarUrl: '/images/huzaifa-profile.jpg',
   caseworkStatus: 'Open',
   bannerAnnouncement: 'Priority Casework Queue Active: 24/7 Account Recovery & Direct Appeals Support',
   bannerEnabled: true,
@@ -110,11 +143,15 @@ const INITIAL_SAMPLE_LEADS: LeadRecord[] = [
 const DATA_DIR = path.join(process.cwd(), 'data');
 const CASES_FILE = path.join(DATA_DIR, 'cases.json');
 const CONFIG_FILE = path.join(DATA_DIR, 'config.json');
+const USERS_FILE = path.join(DATA_DIR, 'users.json');
+const SESSIONS_FILE = path.join(DATA_DIR, 'user_sessions.json');
 
 // Global in-memory fallback cache for serverless environments
 const globalStorage = global as unknown as {
   inMemoryLeads?: LeadRecord[];
   inMemoryConfig?: SiteConfig;
+  inMemoryUsers?: StoredUser[];
+  inMemorySessions?: UserSession[];
 };
 
 function ensureDataDirectory(): void {
@@ -128,7 +165,7 @@ function ensureDataDirectory(): void {
   }
 }
 
-// Ensure cases file exists and has initial data
+// Ensure cases and user files exist and have initial data
 function initFiles(): void {
   ensureDataDirectory();
   try {
@@ -137,6 +174,27 @@ function initFiles(): void {
     }
     if (!fs.existsSync(CONFIG_FILE)) {
       fs.writeFileSync(CONFIG_FILE, JSON.stringify(DEFAULT_SITE_CONFIG, null, 2), 'utf-8');
+    }
+    if (!fs.existsSync(USERS_FILE)) {
+      // Seed initial verified demo user
+      const demoSalt = crypto.randomBytes(16).toString('hex');
+      const demoHash = crypto.scryptSync('MetaClient2026!', demoSalt, 64).toString('hex');
+      const initialUsers: StoredUser[] = [
+        {
+          id: 'USR-1001',
+          name: 'Verified Client',
+          email: 'client@metaresolve.com',
+          passwordHash: demoHash,
+          salt: demoSalt,
+          authProvider: 'local',
+          createdAt: new Date().toISOString(),
+          lastLoginAt: new Date().toISOString(),
+        }
+      ];
+      fs.writeFileSync(USERS_FILE, JSON.stringify(initialUsers, null, 2), 'utf-8');
+    }
+    if (!fs.existsSync(SESSIONS_FILE)) {
+      fs.writeFileSync(SESSIONS_FILE, JSON.stringify([], null, 2), 'utf-8');
     }
   } catch (err) {
     console.warn('Could not initialize data files on disk:', err);
@@ -298,5 +356,243 @@ export function updateStoredSiteConfig(partial: Partial<SiteConfig>): SiteConfig
   }
 
   return updated;
+}
+
+// ----------------------------------------------------
+// USER ACCOUNTS & SESSIONS REPOSITORY
+// ----------------------------------------------------
+
+export function sanitizeUser(user: StoredUser): SanitizedUser {
+  return {
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    authProvider: user.authProvider,
+    avatarUrl: user.avatarUrl,
+    createdAt: user.createdAt,
+  };
+}
+
+export function getAllUsers(): StoredUser[] {
+  try {
+    if (fs.existsSync(USERS_FILE)) {
+      const content = fs.readFileSync(USERS_FILE, 'utf-8');
+      const users: StoredUser[] = JSON.parse(content);
+      if (Array.isArray(users)) {
+        globalStorage.inMemoryUsers = users;
+        return users;
+      }
+    }
+  } catch (err) {
+    console.error('Error reading users from disk:', err);
+  }
+
+  if (!globalStorage.inMemoryUsers) {
+    globalStorage.inMemoryUsers = [];
+  }
+  return globalStorage.inMemoryUsers;
+}
+
+export function saveAllUsers(users: StoredUser[]): boolean {
+  globalStorage.inMemoryUsers = users;
+  try {
+    ensureDataDirectory();
+    fs.writeFileSync(USERS_FILE, JSON.stringify(users, null, 2), 'utf-8');
+    return true;
+  } catch (err) {
+    console.error('Error writing users to disk:', err);
+    return false;
+  }
+}
+
+export function getAllSessions(): UserSession[] {
+  try {
+    if (fs.existsSync(SESSIONS_FILE)) {
+      const content = fs.readFileSync(SESSIONS_FILE, 'utf-8');
+      const sessions: UserSession[] = JSON.parse(content);
+      if (Array.isArray(sessions)) {
+        globalStorage.inMemorySessions = sessions;
+        return sessions;
+      }
+    }
+  } catch (err) {
+    console.error('Error reading sessions from disk:', err);
+  }
+
+  if (!globalStorage.inMemorySessions) {
+    globalStorage.inMemorySessions = [];
+  }
+  return globalStorage.inMemorySessions;
+}
+
+export function saveAllSessions(sessions: UserSession[]): boolean {
+  globalStorage.inMemorySessions = sessions;
+  try {
+    ensureDataDirectory();
+    fs.writeFileSync(SESSIONS_FILE, JSON.stringify(sessions, null, 2), 'utf-8');
+    return true;
+  } catch (err) {
+    console.error('Error writing sessions to disk:', err);
+    return false;
+  }
+}
+
+export function findUserByEmail(email: string): StoredUser | null {
+  const users = getAllUsers();
+  const normalized = email.trim().toLowerCase();
+  return users.find((u) => u.email.toLowerCase() === normalized) || null;
+}
+
+export function findUserById(id: string): StoredUser | null {
+  const users = getAllUsers();
+  return users.find((u) => u.id === id) || null;
+}
+
+export function createSession(userId: string, rememberMe: boolean = true): UserSession {
+  const sessions = getAllSessions();
+  // Filter expired sessions
+  const now = Date.now();
+  const validSessions = sessions.filter((s) => s.expiresAt > now);
+
+  const token = crypto.randomBytes(32).toString('hex');
+  const duration = rememberMe ? 1000 * 60 * 60 * 24 * 30 : 1000 * 60 * 60 * 24; // 30 days vs 24 hours
+  const newSession: UserSession = {
+    token,
+    userId,
+    createdAt: now,
+    expiresAt: now + duration,
+    rememberMe,
+  };
+
+  validSessions.push(newSession);
+  saveAllSessions(validSessions);
+  return newSession;
+}
+
+export function getUserFromSession(token: string): StoredUser | null {
+  if (!token) return null;
+  const sessions = getAllSessions();
+  const now = Date.now();
+  const session = sessions.find((s) => s.token === token && s.expiresAt > now);
+  if (!session) return null;
+
+  return findUserById(session.userId);
+}
+
+export function destroySession(token: string): boolean {
+  if (!token) return false;
+  const sessions = getAllSessions();
+  const filtered = sessions.filter((s) => s.token !== token);
+  saveAllSessions(filtered);
+  return true;
+}
+
+export function createUserRecord(params: {
+  name: string;
+  email: string;
+  password?: string;
+  authProvider: 'local' | 'google';
+  googleId?: string;
+  avatarUrl?: string;
+}): { user: StoredUser; error?: string } {
+  const users = getAllUsers();
+  const normalizedEmail = params.email.trim().toLowerCase();
+
+  const existing = users.find((u) => u.email.toLowerCase() === normalizedEmail);
+  if (existing) {
+    return { user: existing, error: 'Account already exists with this email address' };
+  }
+
+  let passwordHash: string | undefined;
+  let salt: string | undefined;
+
+  if (params.password) {
+    salt = crypto.randomBytes(16).toString('hex');
+    passwordHash = crypto.scryptSync(params.password, salt, 64).toString('hex');
+  }
+
+  const newUser: StoredUser = {
+    id: `USR-${Math.floor(100000 + Math.random() * 900000)}`,
+    name: params.name.trim(),
+    email: normalizedEmail,
+    passwordHash,
+    salt,
+    authProvider: params.authProvider,
+    googleId: params.googleId,
+    avatarUrl: params.avatarUrl,
+    createdAt: new Date().toISOString(),
+    lastLoginAt: new Date().toISOString(),
+  };
+
+  users.push(newUser);
+  saveAllUsers(users);
+
+  return { user: newUser };
+}
+
+export function authenticateUser(email: string, password: string): { user: StoredUser | null; error?: string } {
+  const user = findUserByEmail(email);
+  if (!user) {
+    return { user: null, error: 'No account found with this email address' };
+  }
+
+  if (user.authProvider === 'google' && !user.passwordHash) {
+    return { user: null, error: 'This account was registered with Google. Please use Continue with Google.' };
+  }
+
+  if (!user.passwordHash || !user.salt) {
+    return { user: null, error: 'Password authentication not configured for this account' };
+  }
+
+  const calculatedHash = crypto.scryptSync(password, user.salt, 64).toString('hex');
+  const expectedBuffer = Buffer.from(user.passwordHash, 'hex');
+  const calculatedBuffer = Buffer.from(calculatedHash, 'hex');
+
+  if (expectedBuffer.length !== calculatedBuffer.length || !crypto.timingSafeEqual(expectedBuffer, calculatedBuffer)) {
+    return { user: null, error: 'Invalid password. Please check your credentials.' };
+  }
+
+  // Update last login timestamp
+  user.lastLoginAt = new Date().toISOString();
+  saveAllUsers(getAllUsers().map((u) => (u.id === user.id ? user : u)));
+
+  return { user };
+}
+
+export function createPasswordResetToken(email: string): { success: boolean; token?: string; error?: string } {
+  const user = findUserByEmail(email);
+  if (!user) {
+    return { success: false, error: 'No account found with this email address.' };
+  }
+
+  const token = crypto.randomBytes(24).toString('hex');
+  const expiry = Date.now() + 1000 * 60 * 60; // 1 hour
+
+  user.resetToken = token;
+  user.resetTokenExpiry = expiry;
+
+  saveAllUsers(getAllUsers().map((u) => (u.id === user.id ? user : u)));
+  return { success: true, token };
+}
+
+export function resetPasswordWithToken(token: string, newPassword: string): { success: boolean; error?: string } {
+  const users = getAllUsers();
+  const now = Date.now();
+  const user = users.find((u) => u.resetToken === token && u.resetTokenExpiry && u.resetTokenExpiry > now);
+
+  if (!user) {
+    return { success: false, error: 'Invalid or expired password reset link. Please request a new one.' };
+  }
+
+  const salt = crypto.randomBytes(16).toString('hex');
+  const passwordHash = crypto.scryptSync(newPassword, salt, 64).toString('hex');
+
+  user.passwordHash = passwordHash;
+  user.salt = salt;
+  user.resetToken = undefined;
+  user.resetTokenExpiry = undefined;
+
+  saveAllUsers(users);
+  return { success: true };
 }
 

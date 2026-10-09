@@ -1030,7 +1030,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExitAdmin }) =
                             className="w-full h-full object-cover object-center"
                           />
                         ) : (
-                          <span className="text-sm font-mono font-bold text-[#B7FF35]">HZ</span>
+                          <img
+                            src="/images/huzaifa-profile.jpg"
+                            alt="Huzaifa Preview"
+                            className="w-full h-full object-cover object-center"
+                          />
                         )}
                       </div>
                     </div>

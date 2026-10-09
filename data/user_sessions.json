@@ -1,0 +1,23 @@
+[
+  {
+    "token": "09c5533c8c3f08ba2b75d31c21d6c0a99f7db51678c41ec0148eb572d85f9673",
+    "userId": "USR-1001",
+    "createdAt": 1791559206757,
+    "expiresAt": 1794151206757,
+    "rememberMe": true
+  },
+  {
+    "token": "27308a58ab322a7768c4b1e8b81d953141f736a5aaef490b2b3828548a780d74",
+    "userId": "USR-335744",
+    "createdAt": 1791559227609,
+    "expiresAt": 1794151227609,
+    "rememberMe": true
+  },
+  {
+    "token": "8548b16fa32f178f2640d5c0c74696c4ee7c520a8dfbb3542a8261569c414045",
+    "userId": "USR-335744",
+    "createdAt": 1791559243702,
+    "expiresAt": 1794151243702,
+    "rememberMe": true
+  }
+]

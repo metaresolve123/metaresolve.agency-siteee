@@ -10,7 +10,18 @@ import {
   updateLeadNotesRecord,
   deleteLeadRecord,
   getStoredSiteConfig,
-  updateStoredSiteConfig
+  updateStoredSiteConfig,
+  createUserRecord,
+  authenticateUser,
+  getUserFromSession,
+  destroySession,
+  findUserByEmail,
+  createPasswordResetToken,
+  resetPasswordWithToken,
+  getAllUsers,
+  saveAllUsers,
+  createSession,
+  sanitizeUser
 } from './serverStorage.ts';
 import type { LeadStatus, PlatformType } from './serverStorage.ts';
 
@@ -460,6 +471,324 @@ async function startServer() {
 
     const config = updateStoredSiteConfig({ huzaifaAvatarUrl: photoDataUrl });
     return res.json({ success: true, config });
+  });
+
+  // ----------------------------------------------------
+  // VISITOR / CLIENT USER AUTHENTICATION ENDPOINTS
+  // (Completely decoupled from Admin Portal authentication)
+  // ----------------------------------------------------
+
+  // Sign up with Name, Email & Password
+  app.post('/api/user-auth/signup', (req, res) => {
+    const { name, email, password, confirmPassword, agreeTerms, rememberMe } = req.body || {};
+
+    if (!name || typeof name !== 'string' || !name.trim()) {
+      return res.status(400).json({ success: false, error: 'Full name is required.' });
+    }
+    if (!email || typeof email !== 'string' || !email.includes('@')) {
+      return res.status(400).json({ success: false, error: 'A valid email address is required.' });
+    }
+    if (!password || typeof password !== 'string' || password.length < 6) {
+      return res.status(400).json({ success: false, error: 'Password must be at least 6 characters long.' });
+    }
+    if (confirmPassword !== undefined && password !== confirmPassword) {
+      return res.status(400).json({ success: false, error: 'Passwords do not match.' });
+    }
+    if (agreeTerms === false) {
+      return res.status(400).json({ success: false, error: 'You must agree to the Terms of Service & Privacy Policy.' });
+    }
+
+    const { user, error } = createUserRecord({
+      name: name.trim(),
+      email: email.trim().toLowerCase(),
+      password,
+      authProvider: 'local',
+    });
+
+    if (error || !user) {
+      return res.status(400).json({ success: false, error: error || 'Failed to create account.' });
+    }
+
+    const session = createSession(user.id, rememberMe !== false);
+    return res.json({
+      success: true,
+      message: 'Account created successfully!',
+      token: session.token,
+      user: sanitizeUser(user),
+    });
+  });
+
+  // Sign in with Email & Password
+  app.post('/api/user-auth/login', (req, res) => {
+    const { email, password, rememberMe } = req.body || {};
+
+    if (!email || !password) {
+      return res.status(400).json({ success: false, error: 'Email and password are required.' });
+    }
+
+    const { user, error } = authenticateUser(email.trim().toLowerCase(), password);
+    if (error || !user) {
+      return res.status(401).json({ success: false, error: error || 'Invalid email or password.' });
+    }
+
+    const session = createSession(user.id, rememberMe !== false);
+    return res.json({
+      success: true,
+      message: 'Welcome back!',
+      token: session.token,
+      user: sanitizeUser(user),
+    });
+  });
+
+  // Fetch Current User from Token (Bearer token verification)
+  app.get('/api/user-auth/me', (req, res) => {
+    const authHeader = req.headers.authorization;
+    let token = '';
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      token = authHeader.substring(7).trim();
+    } else if (req.query.token) {
+      token = String(req.query.token).trim();
+    }
+
+    if (!token) {
+      return res.status(401).json({ success: false, error: 'No authentication token provided.' });
+    }
+
+    const user = getUserFromSession(token);
+    if (!user) {
+      return res.status(401).json({ success: false, error: 'Session expired or invalid.' });
+    }
+
+    return res.json({
+      success: true,
+      user: sanitizeUser(user),
+    });
+  });
+
+  // Sign out
+  app.post('/api/user-auth/logout', (req, res) => {
+    const authHeader = req.headers.authorization;
+    let token = '';
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      token = authHeader.substring(7).trim();
+    } else if (req.body && req.body.token) {
+      token = String(req.body.token).trim();
+    }
+
+    if (token) {
+      destroySession(token);
+    }
+    return res.json({ success: true, message: 'Signed out successfully.' });
+  });
+
+  // Request Password Reset Link
+  app.post('/api/user-auth/forgot-password', (req, res) => {
+    const { email } = req.body || {};
+    if (!email || typeof email !== 'string' || !email.includes('@')) {
+      return res.status(400).json({ success: false, error: 'Please enter a valid email address.' });
+    }
+
+    const result = createPasswordResetToken(email.trim().toLowerCase());
+    // For privacy and security, standard practice is returning confirmation even if email isn't in db
+    if (!result.success) {
+      return res.json({
+        success: true,
+        message: 'If an account exists with this email address, a password reset link has been dispatched.',
+      });
+    }
+
+    console.log(`[AUTH] Password reset token generated for ${email}: ${result.token}`);
+    return res.json({
+      success: true,
+      message: 'Password reset link dispatched. Please check your inbox and spam folders.',
+      // Provide self-service token preview for development convenience
+      resetToken: process.env.NODE_ENV !== 'production' ? result.token : undefined,
+    });
+  });
+
+  // Reset Password with Token
+  app.post('/api/user-auth/reset-password', (req, res) => {
+    const { token, newPassword, confirmPassword } = req.body || {};
+
+    if (!token || typeof token !== 'string') {
+      return res.status(400).json({ success: false, error: 'Reset token is required.' });
+    }
+    if (!newPassword || typeof newPassword !== 'string' || newPassword.length < 6) {
+      return res.status(400).json({ success: false, error: 'New password must be at least 6 characters long.' });
+    }
+    if (confirmPassword && newPassword !== confirmPassword) {
+      return res.status(400).json({ success: false, error: 'Passwords do not match.' });
+    }
+
+    const result = resetPasswordWithToken(token.trim(), newPassword);
+    if (!result.success) {
+      return res.status(400).json({ success: false, error: result.error || 'Failed to reset password.' });
+    }
+
+    return res.json({
+      success: true,
+      message: 'Password has been reset successfully. You can now sign in with your new credentials.',
+    });
+  });
+
+  // Google OAuth URL generation endpoint
+  app.get('/api/user-auth/google/url', (req, res) => {
+    const clientId = (process.env.GOOGLE_CLIENT_ID || '').trim();
+    const appUrl = (process.env.APP_URL || `${req.protocol}://${req.get('host')}`).replace(/\/$/, '');
+    const redirectUri = `${appUrl}/api/user-auth/google/callback`;
+
+    if (!clientId) {
+      return res.json({
+        success: false,
+        configured: false,
+        error: 'Google OAuth Client ID is not configured in environment variables. Please add GOOGLE_CLIENT_ID in your configuration.',
+        docs: 'Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in Cloud Run / Vercel secrets or .env file.',
+      });
+    }
+
+    const state = crypto.randomBytes(16).toString('hex');
+    const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?` +
+      `client_id=${encodeURIComponent(clientId)}&` +
+      `redirect_uri=${encodeURIComponent(redirectUri)}&` +
+      `response_type=code&` +
+      `scope=${encodeURIComponent('openid email profile')}&` +
+      `state=${encodeURIComponent(state)}&` +
+      `access_type=offline&` +
+      `prompt=select_account`;
+
+    return res.json({
+      success: true,
+      configured: true,
+      url: authUrl,
+      clientId,
+    });
+  });
+
+  // Google OAuth Redirect Callback Handler
+  app.get('/api/user-auth/google/callback', async (req, res) => {
+    const { code, error } = req.query;
+
+    if (error) {
+      console.error('Google OAuth callback returned error:', error);
+      return res.redirect(`/?auth_error=${encodeURIComponent(String(error))}`);
+    }
+
+    if (!code || typeof code !== 'string') {
+      return res.redirect(`/?auth_error=${encodeURIComponent('Missing authorization code from Google')}`);
+    }
+
+    const clientId = (process.env.GOOGLE_CLIENT_ID || '').trim();
+    const clientSecret = (process.env.GOOGLE_CLIENT_SECRET || '').trim();
+    const appUrl = (process.env.APP_URL || `${req.protocol}://${req.get('host')}`).replace(/\/$/, '');
+    const redirectUri = `${appUrl}/api/user-auth/google/callback`;
+
+    if (!clientId || !clientSecret) {
+      return res.redirect(`/?auth_error=${encodeURIComponent('Google OAuth Client credentials not configured on server')}`);
+    }
+
+    try {
+      // Exchange code for Google access token & ID token
+      const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          code,
+          client_id: clientId,
+          client_secret: clientSecret,
+          redirect_uri: redirectUri,
+          grant_type: 'authorization_code',
+        }),
+      });
+
+      const tokenData = await tokenResponse.json();
+      if (!tokenResponse.ok || !tokenData.access_token) {
+        console.error('Google token exchange failed:', tokenData);
+        return res.redirect(`/?auth_error=${encodeURIComponent(tokenData.error_description || 'Failed to exchange token with Google')}`);
+      }
+
+      // Fetch user profile info using the access token
+      const profileResponse = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+        headers: { Authorization: `Bearer ${tokenData.access_token}` },
+      });
+
+      const profile = await profileResponse.json();
+      if (!profileResponse.ok || !profile.email) {
+        return res.redirect(`/?auth_error=${encodeURIComponent('Failed to retrieve user profile from Google')}`);
+      }
+
+      // Match or register user in our local database
+      let user = findUserByEmail(profile.email);
+      if (!user) {
+        const created = createUserRecord({
+          name: profile.name || profile.email.split('@')[0],
+          email: profile.email,
+          authProvider: 'google',
+          googleId: profile.sub,
+          avatarUrl: profile.picture,
+        });
+        user = created.user;
+      } else {
+        if (!user.googleId) user.googleId = profile.sub;
+        if (profile.picture && !user.avatarUrl) user.avatarUrl = profile.picture;
+        saveAllUsers(getAllUsers().map((u) => (u.id === user!.id ? user! : u)));
+      }
+
+      // Create session token
+      const session = createSession(user.id, true);
+      return res.redirect(`/?auth_token=${encodeURIComponent(session.token)}&auth_name=${encodeURIComponent(user.name)}`);
+    } catch (err: any) {
+      console.error('Error handling Google OAuth callback:', err);
+      return res.redirect(`/?auth_error=${encodeURIComponent(err?.message || 'Server error during Google authentication')}`);
+    }
+  });
+
+  // Support for Google Identity Services / OneTap client credential token
+  app.post('/api/user-auth/google-token', async (req, res) => {
+    const { credential } = req.body || {};
+    if (!credential || typeof credential !== 'string') {
+      return res.status(400).json({ success: false, error: 'Google credential token is required' });
+    }
+
+    try {
+      // Decode JWT payload without external library
+      const parts = credential.split('.');
+      if (parts.length !== 3) {
+        return res.status(400).json({ success: false, error: 'Malformed Google credential token' });
+      }
+
+      const payloadJson = Buffer.from(parts[1], 'base64url').toString('utf8');
+      const payload = JSON.parse(payloadJson);
+
+      if (!payload.email) {
+        return res.status(400).json({ success: false, error: 'Invalid Google token: email missing' });
+      }
+
+      let user = findUserByEmail(payload.email);
+      if (!user) {
+        const created = createUserRecord({
+          name: payload.name || payload.email.split('@')[0],
+          email: payload.email,
+          authProvider: 'google',
+          googleId: payload.sub,
+          avatarUrl: payload.picture,
+        });
+        user = created.user;
+      } else {
+        if (!user.googleId) user.googleId = payload.sub;
+        if (payload.picture && !user.avatarUrl) user.avatarUrl = payload.picture;
+        saveAllUsers(getAllUsers().map((u) => (u.id === user!.id ? user! : u)));
+      }
+
+      const session = createSession(user.id, true);
+      return res.json({
+        success: true,
+        token: session.token,
+        user: sanitizeUser(user),
+      });
+    } catch (err: any) {
+      console.error('Error verifying Google credential token:', err);
+      return res.status(500).json({ success: false, error: 'Failed to verify Google token' });
+    }
   });
 
   // --- Vite Middleware for Development / Static in Production ---

@@ -1,7 +1,7 @@
 import { ServiceItem, TeamMember, PricingPlan, CaseStudy, Testimonial } from '../types';
 import { getWhatsAppUrl, getHuzaifaWhatsAppUrl } from '../config';
 import adilImg from '../assets/images/adil_profile_1787479854318.jpg';
-import huzaifaImg from '../assets/images/huzaifa_profile_1787479833514.jpg';
+import huzaifaImg from '../assets/images/huzaifa-profile.jpg';
 
 export const PLATFORMS_LIST = [
   { id: 'instagram', label: 'Instagram', icon: 'Instagram' },

@@ -120,3 +120,20 @@ export interface AdminCredentials {
   password: string;
   lastUpdated?: string;
 }
+
+export interface AuthUser {
+  id: string;
+  name: string;
+  email: string;
+  authProvider: 'local' | 'google';
+  avatarUrl?: string;
+  createdAt: string;
+}
+
+export interface AuthResponse {
+  success: boolean;
+  user?: AuthUser;
+  token?: string;
+  error?: string;
+  message?: string;
+}

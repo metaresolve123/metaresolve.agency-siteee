@@ -10,6 +10,7 @@ import { TEAM_MEMBERS } from '../data/mockData';
 import { TeamMember } from '../types';
 import { WHATSAPP_DISPLAY_NUMBER, HUZAIFA_WHATSAPP_DISPLAY_NUMBER, getWhatsAppUrl } from '../config';
 import { getSiteConfig } from '../utils/adminStorage';
+import huzaifaImg from '../assets/images/huzaifa-profile.jpg';
 
 interface TeamSectionProps {
   onContactSpecialist?: (specialistName: string) => void;
@@ -80,9 +81,9 @@ export const TeamSection: React.FC<TeamSectionProps> = ({ onContactSpecialist })
             const directNumber = isFounder ? WHATSAPP_DISPLAY_NUMBER : HUZAIFA_WHATSAPP_DISPLAY_NUMBER;
             const displayName = isFounder && siteConfig.founderName ? siteConfig.founderName : member.name;
             const displayRole = member.role;
-            const displayAvatar = isFounder 
-              ? ((siteConfig as any).founderAvatarUrl || member.avatarUrl)
-              : ((siteConfig as any).huzaifaAvatarUrl || member.avatarUrl);
+            const displayAvatar = isHuzaifa
+              ? huzaifaImg
+              : (isFounder ? ((siteConfig as any).founderAvatarUrl || member.avatarUrl) : member.avatarUrl);
 
             return (
               <motion.div

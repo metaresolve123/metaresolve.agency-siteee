@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   ShieldCheck,
@@ -6,21 +6,33 @@ import {
   X,
   ArrowUpRight,
   Zap,
-  MessageCircle
+  MessageCircle,
+  User,
+  LogOut,
+  ChevronDown
 } from 'lucide-react';
 import { getWhatsAppUrl } from '../config';
+import { AuthUser } from '../types';
 
 interface NavbarProps {
   onOpenAssessment: () => void;
   onScrollToSection: (sectionId: string) => void;
+  currentUser?: AuthUser | null;
+  onOpenAccountModal?: () => void;
+  onLogout?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
   onOpenAssessment,
-  onScrollToSection
+  onScrollToSection,
+  currentUser,
+  onOpenAccountModal,
+  onLogout
 }) => {
   const [isScrolled, setIsScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [userDropdownOpen, setUserDropdownOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const handleScroll = () => {
@@ -28,6 +40,17 @@ export const Navbar: React.FC<NavbarProps> = ({
     };
     window.addEventListener('scroll', handleScroll);
     return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  // Click outside listener for user dropdown
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setUserDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
   const navLinks = [
@@ -38,6 +61,8 @@ export const Navbar: React.FC<NavbarProps> = ({
     { label: 'Results', target: 'results' },
     { label: 'Pricing', target: 'pricing' },
   ];
+
+  const userInitial = currentUser?.name?.trim().charAt(0).toUpperCase() || 'U';
 
   return (
     <>
@@ -108,6 +133,84 @@ export const Navbar: React.FC<NavbarProps> = ({
                 Get help
                 <ArrowUpRight className="w-3.5 h-3.5 stroke-[2.5]" />
               </button>
+
+              {/* Authenticated User Profile Dropdown */}
+              {currentUser && (
+                <div className="relative" ref={dropdownRef}>
+                  <button
+                    onClick={() => setUserDropdownOpen(!userDropdownOpen)}
+                    className="flex items-center gap-2 pl-2 pr-3 py-1.5 rounded-full bg-[#141A19] border border-white/10 hover:border-[#B7FF35]/40 transition-all cursor-pointer group"
+                    id="user-nav-dropdown-trigger"
+                    title={currentUser.name}
+                  >
+                    <div className="w-7 h-7 rounded-full p-[1.5px] bg-gradient-to-tr from-[#86D416] via-[#B7FF35] to-[#467320]">
+                      <div className="w-full h-full rounded-full bg-[#0A0F0E] flex items-center justify-center font-bold text-[11px] text-[#B7FF35]">
+                        {currentUser.avatarUrl ? (
+                          <img
+                            src={currentUser.avatarUrl}
+                            alt={currentUser.name}
+                            className="w-full h-full rounded-full object-cover"
+                          />
+                        ) : (
+                          userInitial
+                        )}
+                      </div>
+                    </div>
+                    <span className="text-xs font-semibold text-[#F2F5EF] max-w-[100px] truncate group-hover:text-white transition-colors">
+                      {currentUser.name.split(' ')[0]}
+                    </span>
+                    <ChevronDown className="w-3.5 h-3.5 text-[#8C9891] group-hover:text-[#B7FF35] transition-colors" />
+                  </button>
+
+                  {/* Dropdown Menu */}
+                  <AnimatePresence>
+                    {userDropdownOpen && (
+                      <motion.div
+                        initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                        transition={{ duration: 0.15 }}
+                        className="absolute right-0 mt-2 w-56 bg-[#141B19] border border-white/10 rounded-2xl shadow-2xl p-2 z-50 backdrop-blur-xl"
+                      >
+                        {/* User Identity Header */}
+                        <div className="px-3 py-2.5 border-b border-white/[0.06] mb-1">
+                          <p className="text-xs font-bold text-[#F2F5EF] truncate">
+                            {currentUser.name}
+                          </p>
+                          <p className="text-[10px] text-[#8C9891] font-mono truncate">
+                            {currentUser.email}
+                          </p>
+                        </div>
+
+                        {/* Menu Options */}
+                        <button
+                          onClick={() => {
+                            setUserDropdownOpen(false);
+                            onOpenAccountModal?.();
+                          }}
+                          className="w-full px-3 py-2 rounded-xl text-xs text-[#D1DDD6] hover:text-[#B7FF35] hover:bg-[#1A2421] transition-colors flex items-center gap-2.5 text-left cursor-pointer"
+                        >
+                          <User className="w-3.5 h-3.5 text-[#B7FF35]" />
+                          <span>My Account</span>
+                        </button>
+
+                        <div className="h-px bg-white/[0.06] my-1" />
+
+                        <button
+                          onClick={() => {
+                            setUserDropdownOpen(false);
+                            onLogout?.();
+                          }}
+                          className="w-full px-3 py-2 rounded-xl text-xs text-red-400 hover:text-red-300 hover:bg-red-500/10 transition-colors flex items-center gap-2.5 text-left cursor-pointer"
+                        >
+                          <LogOut className="w-3.5 h-3.5 text-red-400" />
+                          <span>Log Out</span>
+                        </button>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+              )}
             </div>
 
             {/* Mobile Menu Toggle Button */}
@@ -156,6 +259,29 @@ export const Navbar: React.FC<NavbarProps> = ({
               ))}
 
               <div className="pt-2 flex flex-col gap-3">
+                {currentUser && (
+                  <div className="p-3 rounded-xl bg-[#141A19] border border-white/10 flex items-center justify-between">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-8 h-8 rounded-full bg-[#17221E] border border-[#B7FF35]/40 flex items-center justify-center text-xs font-bold text-[#B7FF35]">
+                        {userInitial}
+                      </div>
+                      <div>
+                        <div className="text-xs font-bold text-[#F2F5EF]">{currentUser.name}</div>
+                        <div className="text-[10px] text-[#8C9891] font-mono">{currentUser.email}</div>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => {
+                        setMobileMenuOpen(false);
+                        onOpenAccountModal?.();
+                      }}
+                      className="px-2.5 py-1 rounded-lg bg-[#1B211F] border border-white/10 text-[11px] font-mono text-[#B7FF35]"
+                    >
+                      Account
+                    </button>
+                  </div>
+                )}
+
                 <a
                   href={getWhatsAppUrl()}
                   target="_blank"
@@ -187,6 +313,19 @@ export const Navbar: React.FC<NavbarProps> = ({
                   Submit Intake Ticket
                   <ArrowUpRight className="w-4 h-4" />
                 </button>
+
+                {currentUser && (
+                  <button
+                    onClick={() => {
+                      setMobileMenuOpen(false);
+                      onLogout?.();
+                    }}
+                    className="w-full py-2.5 text-xs font-mono text-red-400 hover:text-red-300 bg-red-500/10 border border-red-500/20 rounded-xl flex items-center justify-center gap-2 cursor-pointer mt-1"
+                  >
+                    <LogOut className="w-4 h-4" />
+                    <span>Log Out</span>
+                  </button>
+                )}
               </div>
             </div>
           </motion.div>

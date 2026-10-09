@@ -1,0 +1,22 @@
+[
+  {
+    "id": "USR-1001",
+    "name": "Verified Client",
+    "email": "client@metaresolve.com",
+    "passwordHash": "892228abc60535e38dc6610d7b629eb3ab515fb2d015d7affb0d270ceb2fc86b245ff960691757b2f37a18b7dd68ab18304946b7f8e8a3d988e53542a13cabc3",
+    "salt": "6c9f31cfe2746bd6099845ed7ebef83e",
+    "authProvider": "local",
+    "createdAt": "2026-10-09T15:19:56.908Z",
+    "lastLoginAt": "2026-10-09T15:20:06.756Z"
+  },
+  {
+    "id": "USR-335744",
+    "name": "Alex Vance",
+    "email": "alex@example.com",
+    "passwordHash": "2e8082e716fbefd14dce2095cedc4106a53685a1c867a63d7c2965e227aab3f9bcabc6559382958642c5c4967b93e3617b98f13d24c549c863fab02df4847331",
+    "salt": "758f090be764c16cff27aa9211889082",
+    "authProvider": "local",
+    "createdAt": "2026-10-09T15:20:27.609Z",
+    "lastLoginAt": "2026-10-09T15:20:43.701Z"
+  }
+]
