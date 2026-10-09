@@ -1,4 +1,4 @@
-import { getStoredSiteConfig } from '../serverStorage';
+import { getStoredSiteConfig } from '../serverStorage.ts';
 
 export default async function handler(req: any, res: any) {
   if (req.method !== 'GET') {

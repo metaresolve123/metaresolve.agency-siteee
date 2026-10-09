@@ -1,25 +1,22 @@
-import { destroySession } from '../../serverStorage';
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+import { getBearerToken, sendResponse } from '../_userAuth.ts';
 
 export default async function handler(req: any, res: any) {
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
   if (req.method !== 'POST') {
-    return res.status(405).json({ success: false, error: 'Method not allowed' });
+    return sendResponse(res, 405, { success: false, error: 'Method not allowed' });
   }
 
   try {
-    const authHeader = req.headers?.authorization || req.headers?.Authorization;
-    let token = '';
-    if (authHeader && typeof authHeader === 'string' && authHeader.startsWith('Bearer ')) {
-      token = authHeader.substring(7).trim();
-    } else if (req.body?.token) {
-      token = String(req.body.token).trim();
-    }
-
-    if (token) {
-      destroySession(token);
-    }
-
-    return res.status(200).json({ success: true, message: 'Signed out successfully.' });
+    getBearerToken(req);
+    return sendResponse(res, 200, { success: true, message: 'Signed out successfully.' });
   } catch (err: any) {
-    return res.status(500).json({ success: false, error: err?.message || 'Server error during logout' });
+    return sendResponse(res, 500, { success: false, error: err?.message || 'Server error during logout' });
   }
 }

@@ -18,6 +18,7 @@ import {
   Calendar
 } from 'lucide-react';
 import { AuthUser } from '../../types';
+import { requestPasswordReset, resetPassword } from '../../utils/userAuth';
 
 interface AccountModalProps {
   isOpen: boolean;
@@ -67,26 +68,16 @@ export const AccountModal: React.FC<AccountModalProps> = ({
     }
 
     try {
-      // Direct reset request using current session email
-      const res = await fetch('/api/user-auth/forgot-password', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: currentUser.email })
-      });
-      const data = await res.json();
+      // Safe reset request using centralized userAuth helper
+      const res = await requestPasswordReset(currentUser.email);
 
-      if (data.resetToken) {
-        const updateRes = await fetch('/api/user-auth/reset-password', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            token: data.resetToken,
-            newPassword,
-            confirmPassword: confirmNewPassword
-          })
-        });
-        const updateData = await updateRes.json();
-        if (updateData.success) {
+      if (res.success && res.resetToken) {
+        const updateRes = await resetPassword(
+          res.resetToken,
+          newPassword,
+          confirmNewPassword
+        );
+        if (updateRes.success) {
           setPasswordStatus({
             loading: false,
             error: '',
@@ -96,14 +87,29 @@ export const AccountModal: React.FC<AccountModalProps> = ({
           setConfirmNewPassword('');
           setCurrentPassword('');
           return;
+        } else {
+          setPasswordStatus({
+            loading: false,
+            error: updateRes.error || 'Failed to update password.',
+            success: ''
+          });
+          return;
         }
       }
 
-      setPasswordStatus({
-        loading: false,
-        error: '',
-        success: 'Password reset link sent to your registered email address.'
-      });
+      if (res.success) {
+        setPasswordStatus({
+          loading: false,
+          error: '',
+          success: 'Password reset instructions have been generated for your email.'
+        });
+      } else {
+        setPasswordStatus({
+          loading: false,
+          error: res.error || 'Failed to update password.',
+          success: ''
+        });
+      }
     } catch (err: any) {
       setPasswordStatus({
         loading: false,

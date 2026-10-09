@@ -1,7 +1,18 @@
-import { findUserByEmail, createUserRecord, createSession, saveAllUsers, getAllUsers } from '../../../serverStorage';
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+import {
+  loadUsers,
+  saveUsers,
+  sanitize,
+  signSessionToken,
+} from '../../_userAuth.ts';
+import type { StoredUser } from '../../_userAuth.ts';
 
 export default async function handler(req: any, res: any) {
-  const { code, error } = req.query;
+  const { code, error } = req.query || {};
 
   if (error) {
     console.error('Google OAuth callback returned error:', error);
@@ -51,24 +62,34 @@ export default async function handler(req: any, res: any) {
       return res.redirect(`/?auth_error=${encodeURIComponent('Failed to retrieve user profile from Google')}`);
     }
 
-    let user = findUserByEmail(profile.email);
+    const normalizedEmail = profile.email.trim().toLowerCase();
+    const users = loadUsers();
+    let user = users.find((u) => u.email.toLowerCase() === normalizedEmail);
+
     if (!user) {
-      const created = createUserRecord({
+      user = {
+        id: `USR-${Math.floor(100000 + Math.random() * 900000)}`,
         name: profile.name || profile.email.split('@')[0],
-        email: profile.email,
+        email: normalizedEmail,
         authProvider: 'google',
         googleId: profile.sub,
         avatarUrl: profile.picture,
-      });
-      user = created.user;
+        createdAt: new Date().toISOString(),
+        lastLoginAt: new Date().toISOString(),
+      };
+      users.push(user);
     } else {
       if (!user.googleId) user.googleId = profile.sub;
       if (profile.picture && !user.avatarUrl) user.avatarUrl = profile.picture;
-      saveAllUsers(getAllUsers().map((u) => (u.id === user!.id ? user! : u)));
+      user.lastLoginAt = new Date().toISOString();
     }
 
-    const session = createSession(user.id, true);
-    return res.redirect(`/?auth_token=${encodeURIComponent(session.token)}&auth_name=${encodeURIComponent(user.name)}`);
+    saveUsers(users);
+
+    const sanitized = sanitize(user);
+    const sessionToken = signSessionToken(sanitized, true);
+
+    return res.redirect(`/?auth_token=${encodeURIComponent(sessionToken)}&auth_name=${encodeURIComponent(user.name)}`);
   } catch (err: any) {
     console.error('Error handling Google OAuth callback:', err);
     return res.redirect(`/?auth_error=${encodeURIComponent(err?.message || 'Server error during Google authentication')}`);

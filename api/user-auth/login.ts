@@ -1,30 +1,74 @@
-import { authenticateUser, createSession, sanitizeUser } from '../../serverStorage';
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+import crypto from 'crypto';
+import {
+  loadUsers,
+  saveUsers,
+  sanitize,
+  signSessionToken,
+  parseRequestBody,
+  sendResponse,
+} from '../_userAuth.ts';
 
 export default async function handler(req: any, res: any) {
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
   if (req.method !== 'POST') {
-    return res.status(405).json({ success: false, error: 'Method not allowed' });
+    return sendResponse(res, 405, { success: false, error: 'Method not allowed' });
   }
 
   try {
-    const { email, password, rememberMe } = req.body || {};
+    const body = parseRequestBody(req);
+    const { email, password, rememberMe } = body;
 
     if (!email || !password) {
-      return res.status(400).json({ success: false, error: 'Email and password are required.' });
+      return sendResponse(res, 400, { success: false, error: 'Email and password are required.' });
     }
 
-    const { user, error } = authenticateUser(email.trim().toLowerCase(), password);
-    if (error || !user) {
-      return res.status(401).json({ success: false, error: error || 'Invalid email or password.' });
+    const normalizedEmail = email.trim().toLowerCase();
+    const users = loadUsers();
+    const user = users.find((u) => u.email.toLowerCase() === normalizedEmail);
+
+    if (!user) {
+      return sendResponse(res, 401, { success: false, error: 'No account found with this email address.' });
     }
 
-    const session = createSession(user.id, rememberMe !== false);
-    return res.status(200).json({
+    if (user.authProvider === 'google' && !user.passwordHash) {
+      return sendResponse(res, 401, {
+        success: false,
+        error: 'This account was created with Google. Please use Continue with Google.',
+      });
+    }
+
+    if (!user.passwordHash || !user.salt) {
+      return sendResponse(res, 401, { success: false, error: 'Password authentication not set up for this account.' });
+    }
+
+    const calculatedHash = crypto.scryptSync(password, user.salt, 64).toString('hex');
+    const expectedBuffer = Buffer.from(user.passwordHash, 'hex');
+    const calculatedBuffer = Buffer.from(calculatedHash, 'hex');
+
+    if (expectedBuffer.length !== calculatedBuffer.length || !crypto.timingSafeEqual(expectedBuffer, calculatedBuffer)) {
+      return sendResponse(res, 401, { success: false, error: 'Invalid password. Please check your credentials.' });
+    }
+
+    user.lastLoginAt = new Date().toISOString();
+    saveUsers(users.map((u) => (u.id === user.id ? user : u)));
+
+    const sanitized = sanitize(user);
+    const token = signSessionToken(sanitized, rememberMe !== false);
+
+    return sendResponse(res, 200, {
       success: true,
       message: 'Welcome back!',
-      token: session.token,
-      user: sanitizeUser(user),
+      token,
+      user: sanitized,
     });
   } catch (err: any) {
-    return res.status(500).json({ success: false, error: err?.message || 'Server error during login' });
+    return sendResponse(res, 500, { success: false, error: err?.message || 'Server error during login.' });
   }
 }

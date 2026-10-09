@@ -1,5 +1,5 @@
-import { authenticateServerlessRequest } from '../_auth';
-import { updateStoredSiteConfig } from '../../serverStorage';
+import { authenticateServerlessRequest } from '../_auth.ts';
+import { updateStoredSiteConfig } from '../../serverStorage.ts';
 
 export default async function handler(req: any, res: any) {
   if (req.method !== 'POST') {

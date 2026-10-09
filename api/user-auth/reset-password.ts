@@ -1,33 +1,64 @@
-import { resetPasswordWithToken } from '../../serverStorage';
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+import crypto from 'crypto';
+import {
+  loadUsers,
+  saveUsers,
+  parseRequestBody,
+  sendResponse,
+} from '../_userAuth.ts';
 
 export default async function handler(req: any, res: any) {
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
   if (req.method !== 'POST') {
-    return res.status(405).json({ success: false, error: 'Method not allowed' });
+    return sendResponse(res, 405, { success: false, error: 'Method not allowed' });
   }
 
   try {
-    const { token, newPassword, confirmPassword } = req.body || {};
+    const body = parseRequestBody(req);
+    const { token, newPassword, confirmPassword } = body;
 
     if (!token || typeof token !== 'string') {
-      return res.status(400).json({ success: false, error: 'Reset token is required.' });
+      return sendResponse(res, 400, { success: false, error: 'Reset token is required.' });
     }
     if (!newPassword || typeof newPassword !== 'string' || newPassword.length < 6) {
-      return res.status(400).json({ success: false, error: 'New password must be at least 6 characters long.' });
+      return sendResponse(res, 400, { success: false, error: 'New password must be at least 6 characters long.' });
     }
     if (confirmPassword && newPassword !== confirmPassword) {
-      return res.status(400).json({ success: false, error: 'Passwords do not match.' });
+      return sendResponse(res, 400, { success: false, error: 'Passwords do not match.' });
     }
 
-    const result = resetPasswordWithToken(token.trim(), newPassword);
-    if (!result.success) {
-      return res.status(400).json({ success: false, error: result.error || 'Failed to reset password.' });
+    const users = loadUsers();
+    const now = Date.now();
+    const user = users.find((u) => u.resetToken === token && u.resetTokenExpiry && u.resetTokenExpiry > now);
+
+    if (!user) {
+      return sendResponse(res, 400, {
+        success: false,
+        error: 'Invalid or expired password reset link. Please request a new one.',
+      });
     }
 
-    return res.status(200).json({
+    const salt = crypto.randomBytes(16).toString('hex');
+    const passwordHash = crypto.scryptSync(newPassword, salt, 64).toString('hex');
+
+    user.passwordHash = passwordHash;
+    user.salt = salt;
+    user.resetToken = undefined;
+    user.resetTokenExpiry = undefined;
+
+    saveUsers(users);
+
+    return sendResponse(res, 200, {
       success: true,
       message: 'Password has been reset successfully. You can now sign in with your new credentials.',
     });
   } catch (err: any) {
-    return res.status(500).json({ success: false, error: err?.message || 'Server error resetting password' });
+    return sendResponse(res, 500, { success: false, error: err?.message || 'Server error resetting password.' });
   }
 }

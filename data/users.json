@@ -7,7 +7,7 @@
     "salt": "6c9f31cfe2746bd6099845ed7ebef83e",
     "authProvider": "local",
     "createdAt": "2026-10-09T15:19:56.908Z",
-    "lastLoginAt": "2026-10-09T15:20:06.756Z"
+    "lastLoginAt": "2026-10-09T15:22:29.655Z"
   },
   {
     "id": "USR-335744",
@@ -18,5 +18,35 @@
     "authProvider": "local",
     "createdAt": "2026-10-09T15:20:27.609Z",
     "lastLoginAt": "2026-10-09T15:20:43.701Z"
+  },
+  {
+    "id": "USR-434504",
+    "name": "Test User",
+    "email": "test1@example.com",
+    "passwordHash": "c537b60f6cd2e1ea31c9eb326fce82fe28a9149ab4c48a777880b97bc776ff036a9ee246b2cb4494ce63fc10e182dc2de3c04aaf25566856fbfac915ae9e3616",
+    "salt": "6ef8f27c44bde2d3052ef15a8e5e544d",
+    "authProvider": "local",
+    "createdAt": "2026-10-09T15:56:22.087Z",
+    "lastLoginAt": "2026-10-09T15:56:22.087Z"
+  },
+  {
+    "id": "USR-600237",
+    "name": "Test User",
+    "email": "test@example.com",
+    "passwordHash": "0c036e4ababd87f293bad099fb185a4a0895cd1c2fdaf6441dc238e6e62abb1c0173c7475b17a5ebdc405f362994b6fa32d9e7957230fa2f72a0594c5e55fd90",
+    "salt": "42568d600b7ee995095ad519291b8cdd",
+    "authProvider": "local",
+    "createdAt": "2026-10-09T16:05:42.316Z",
+    "lastLoginAt": "2026-10-09T16:05:42.316Z"
+  },
+  {
+    "id": "USR-409229",
+    "name": "Alex Rivers",
+    "email": "alex.rivers@metaresolve.com",
+    "passwordHash": "d7128653805992909fce9925d82f9bb757eaea0ce3cb916b590fc7b98ef49dac0c9dd3d858b27a41722186499a0e1a45f62970b18a6772ac3dedc6ccf1d4f58e",
+    "salt": "6ab29d58e128b94ca0895f8192a9fd85",
+    "authProvider": "local",
+    "createdAt": "2026-10-09T16:10:46.740Z",
+    "lastLoginAt": "2026-10-09T16:11:37.630Z"
   }
 ]

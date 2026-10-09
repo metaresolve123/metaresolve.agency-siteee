@@ -1,12 +1,12 @@
-import { authenticateServerlessRequest } from '../_auth';
+import { authenticateServerlessRequest } from '../_auth.ts';
 import {
   getAllLeads,
   createLeadRecord,
   updateLeadStatusRecord,
   updateLeadNotesRecord,
   deleteLeadRecord,
-  LeadStatus
-} from '../../serverStorage';
+} from '../../serverStorage.ts';
+import type { LeadStatus } from '../../serverStorage.ts';
 
 export default async function handler(req: any, res: any) {
   const session = authenticateServerlessRequest(req);

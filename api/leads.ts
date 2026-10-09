@@ -1,4 +1,5 @@
-import { createLeadRecord, PlatformType } from '../serverStorage';
+import { createLeadRecord } from '../serverStorage.ts';
+import type { PlatformType } from '../serverStorage.ts';
 
 export default async function handler(req: any, res: any) {
   if (req.method !== 'POST') {

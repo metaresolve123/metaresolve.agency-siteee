@@ -1,5 +1,6 @@
 import crypto from 'crypto';
-import { getAdminUsername, getAdminPassword, safeCompare, serverlessSessions, AdminSession } from '../_auth';
+import { getAdminUsername, getAdminPassword, safeCompare, serverlessSessions } from '../_auth.ts';
+import type { AdminSession } from '../_auth.ts';
 
 export default async function handler(req: any, res: any) {
   if (req.method !== 'POST') {
