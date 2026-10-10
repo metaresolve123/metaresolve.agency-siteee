@@ -1,0 +1,9 @@
+# Ignore temporary archive and test files
+*.zip
+*.tar.gz
+*.tgz
+*.log
+.DS_Store
+
+# Ignore local database cache directory from build bundle
+data/
