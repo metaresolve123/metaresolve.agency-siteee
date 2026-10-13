@@ -21,17 +21,8 @@ import { BanAssessmentModal } from './components/BanAssessmentModal';
 import { FloatingEmergencyBar } from './components/FloatingEmergencyBar';
 import { AdminDashboard } from './components/Admin/AdminDashboard';
 import { IntroSplash } from './components/IntroSplash';
-import { AuthPage } from './components/Auth/AuthPage';
-import { AccountModal } from './components/Auth/AccountModal';
-import { PlatformType, PricingPlan, SiteConfig, AuthUser } from './types';
+import { PlatformType, PricingPlan, SiteConfig } from './types';
 import { getSiteConfig, fetchSiteConfigFromServer } from './utils/adminStorage';
-import {
-  fetchCurrentUser,
-  logoutUser,
-  getStoredUser,
-  setStoredSession
-} from './utils/userAuth';
-import { Loader2 } from 'lucide-react';
 
 export default function App() {
   const [isAdminView, setIsAdminView] = useState<boolean>(() => {
@@ -50,53 +41,15 @@ export default function App() {
     return false;
   });
 
-  const [currentUser, setCurrentUser] = useState<AuthUser | null>(() => getStoredUser());
-  const [isAuthChecking, setIsAuthChecking] = useState<boolean>(true);
-  const [isAccountModalOpen, setIsAccountModalOpen] = useState<boolean>(false);
-
   const [isAssessmentOpen, setIsAssessmentOpen] = useState(false);
   const [selectedPlatform, setSelectedPlatform] = useState<PlatformType>('instagram');
   const [siteConfig, setSiteConfig] = useState<SiteConfig>(getSiteConfig());
 
-  // Check current session & sync server config on mount
+  // Sync server config on mount
   useEffect(() => {
     fetchSiteConfigFromServer().then((cfg) => {
       if (cfg) setSiteConfig(cfg);
     });
-
-    // Check for Google OAuth callback token in URL query string
-    if (typeof window !== 'undefined') {
-      const params = new URLSearchParams(window.location.search);
-      const urlToken = params.get('auth_token');
-      const urlName = params.get('auth_name');
-
-      if (urlToken) {
-        // Construct user and persist session
-        const tempUser: AuthUser = {
-          id: `USR-${Math.floor(100000 + Math.random() * 900000)}`,
-          name: urlName ? decodeURIComponent(urlName) : 'Google User',
-          email: 'google-user@verified.com',
-          authProvider: 'google',
-          createdAt: new Date().toISOString()
-        };
-        setStoredSession(urlToken, tempUser, true);
-        setCurrentUser(tempUser);
-        // Clean URL without page reload
-        window.history.replaceState({}, document.title, window.location.pathname);
-      }
-    }
-
-    fetchCurrentUser().then((user) => {
-      setCurrentUser(user);
-      setIsAuthChecking(false);
-    });
-
-    const handleAuthChanged = (e: any) => {
-      setCurrentUser(e.detail || null);
-    };
-
-    window.addEventListener('metaresolve_auth_changed', handleAuthChanged);
-    return () => window.removeEventListener('metaresolve_auth_changed', handleAuthChanged);
   }, []);
 
   // URL Hash / Route listener for #admin
@@ -170,18 +123,13 @@ export default function App() {
     scrollToSection('contact');
   };
 
-  const handleLogout = async () => {
-    await logoutUser();
-    setCurrentUser(null);
-    setIsAccountModalOpen(false);
-  };
-
   // If in Admin route, render dedicated Admin Panel
   if (isAdminView) {
     return <AdminDashboard onExitAdmin={handleExitAdmin} />;
   }
 
-  // Phase 1: Initial Animated Splash/Intro Screen (once per browser session)
+  // Initial Animated Splash/Intro Screen (once per browser session)
+  // Transition directly to the main website when complete or skipped
   if (!hasSeenIntro) {
     return (
       <IntroSplash
@@ -193,32 +141,7 @@ export default function App() {
     );
   }
 
-  // Session verification loader state
-  if (isAuthChecking) {
-    return (
-      <div className="min-h-screen bg-[#090D0D] text-[#F2F5EF] flex flex-col items-center justify-center p-4">
-        <div className="flex flex-col items-center gap-3">
-          <Loader2 className="w-8 h-8 text-[#B7FF35] animate-spin" />
-          <span className="text-xs font-mono uppercase tracking-widest text-[#9AA49E]">
-            INITIALIZING SECURE SESSION...
-          </span>
-        </div>
-      </div>
-    );
-  }
-
-  // Phase 2: Unauthenticated Visitor Authentication Page
-  if (!currentUser) {
-    return (
-      <AuthPage
-        onAuthSuccess={(user) => {
-          setCurrentUser(user);
-        }}
-      />
-    );
-  }
-
-  // Phase 3: Authenticated Main META RESOLVE Website
+  // Direct Main META RESOLVE Website
   return (
     <div className="min-h-screen bg-[#090D0D] text-[#F2F5EF] relative selection:bg-[#B7FF35] selection:text-[#090D0D]">
       
@@ -235,9 +158,6 @@ export default function App() {
       <Navbar
         onOpenAssessment={() => setIsAssessmentOpen(true)}
         onScrollToSection={scrollToSection}
-        currentUser={currentUser}
-        onOpenAccountModal={() => setIsAccountModalOpen(true)}
-        onLogout={handleLogout}
       />
 
       {/* Main Page Landmark */}
@@ -300,14 +220,6 @@ export default function App() {
         isOpen={isAssessmentOpen}
         onClose={() => setIsAssessmentOpen(false)}
         onProceedToForm={handleProceedFromAssessment}
-      />
-
-      {/* Client Account Modal */}
-      <AccountModal
-        isOpen={isAccountModalOpen}
-        onClose={() => setIsAccountModalOpen(false)}
-        currentUser={currentUser}
-        onLogout={handleLogout}
       />
 
     </div>
