@@ -5,5 +5,7 @@
 *.log
 .DS_Store
 
-# Ignore local database cache directory from build bundle
-data/
+# Ignore root-level runtime database json files from build bundle (anchored to root /)
+/data/
+!src/data/
+!src/data/**

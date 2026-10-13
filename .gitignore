@@ -6,3 +6,10 @@ coverage/
 *.log
 .env*
 !.env.example
+
+# Root database cache files
+/data/*.json
+
+# Ensure source data directory is always tracked
+!src/data/
+!src/data/**
